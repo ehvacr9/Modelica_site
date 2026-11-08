@@ -108,8 +108,9 @@ wireTabs(viewTabs);
 function updateView() {
   $("canvas-world").style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   $("zoom-level").textContent = `${Number((view.scale * 100).toPrecision(3))}%`;
-  $("canvas").style.backgroundSize = `${20 * view.scale}px ${20 * view.scale}px`;
-  $("canvas").style.backgroundPosition = `${view.x}px ${view.y}px`;
+  $("canvas").style.backgroundSize = `${WireRouter.gridSize * view.scale}px ${WireRouter.gridSize * view.scale}px`;
+  const halfGrid = WireRouter.gridSize * view.scale / 2;
+  $("canvas").style.backgroundPosition = `${view.x - halfGrid}px ${view.y - halfGrid}px`;
 }
 
 function canvasPoint(clientX, clientY) {
@@ -235,7 +236,8 @@ function drawWires() {
       WireRouter.pointAt(routes[wire.branch.parent], wire.branch.fraction);
     if (!points && wire.branch && !branchEnd) continue;
     const end = branchEnd || b;
-    const route = points || [a, {x: (a.x + end.x) / 2, y: a.y}, {x: (a.x + end.x) / 2, y: end.y}, end];
+    const middle = WireRouter.snap((a.x + end.x) / 2);
+    const route = points || [a, {x: middle, y: a.y}, {x: middle, y: end.y}, end];
     path.setAttribute("d", pathData(route, index));
     path.setAttribute("class", points ? "wire" : "wire wire-unrouted");
     const title = document.createElementNS(ns, "title");
@@ -287,7 +289,7 @@ function drawWires() {
         if (Math.abs(delta * view.scale) <= 3 && !dragged) return;
         dragged = true;
         hitGroup.style.opacity = "0";
-        candidate = WireRouter.shiftSegment(points, segment, delta);
+        candidate = WireRouter.shiftSegment(points, segment, WireRouter.snap(delta));
         const valid = candidate && router.validManual(index, candidate);
         path.classList.toggle("wire-drag-invalid", !valid);
         if (valid) path.setAttribute("d", candidate.map((point, i) => `${i ? "L" : "M"} ${point.x} ${point.y}`).join(" "));
@@ -304,8 +306,8 @@ function drawWires() {
               const oldPoint = WireRouter.pointAt(points, child.branch.fraction);
               const closest = WireRouter.nearest(points, oldPoint);
               if (closest.segment === segment) {
-                if (horizontal) oldPoint.y += (e.clientY - event.clientY) / view.scale;
-                else oldPoint.x += (e.clientX - event.clientX) / view.scale;
+                if (horizontal) oldPoint.y += WireRouter.snap((e.clientY - event.clientY) / view.scale);
+                else oldPoint.x += WireRouter.snap((e.clientX - event.clientX) / view.scale);
               }
               child.branch.fraction = Math.max(0.000001, Math.min(0.999999, WireRouter.nearest(candidate, oldPoint).fraction));
             }
@@ -427,7 +429,7 @@ function connectToWire(index, route, point) {
   }
   if (connected.has(key(target))) { notify("此端點已與該線路電氣連接。", true); return; }
   if (model.wires.length >= 300) { notify("連線數量已達上限。", true); return; }
-  const nearest = WireRouter.nearest(route, point);
+  const nearest = WireRouter.nearest(route, {x: WireRouter.snap(point.x), y: WireRouter.snap(point.y)});
   if (!nearest || nearest.fraction <= 0 || nearest.fraction >= 1) {
     notify("請點選線段內部；若要連接端點請直接點選元件端點。", true); return;
   }
@@ -529,8 +531,9 @@ function makeNode(item) {
         originalRoutes = model.wires.map((wire, index) => router.route(index));
         originalWires = model.wires.map(wire => ({...wire, branch: wire.branch && {...wire.branch}}));
       }
-      item.x = Math.max(-positionLimit, Math.min(positionLimit, x + dx / view.scale));
-      item.y = Math.max(-positionLimit, Math.min(positionLimit, y + dy / view.scale));
+      const limit = Math.floor(positionLimit / WireRouter.gridSize) * WireRouter.gridSize;
+      item.x = Math.max(-limit, Math.min(limit, WireRouter.snap(x + dx / view.scale)));
+      item.y = Math.max(-limit, Math.min(limit, WireRouter.snap(y + dy / view.scale)));
       moveComponentRoutes(item, originalRoutes, originalWires);
       node.style.left = item.x + "px";
       node.style.top = item.y + "px";
@@ -540,7 +543,7 @@ function makeNode(item) {
       node.removeEventListener("pointermove", move);
       node.removeEventListener("pointerup", end);
       node.removeEventListener("pointercancel", end);
-      if (Math.abs(item.x) === positionLimit || Math.abs(item.y) === positionLimit) notify("元件已達畫布座標上限。", true);
+      if (Math.abs(item.x) >= positionLimit - WireRouter.gridSize || Math.abs(item.y) >= positionLimit - WireRouter.gridSize) notify("元件已達畫布座標上限。", true);
       if (moved) invalidate();
     }
   });
@@ -616,7 +619,9 @@ function addComponent(type, x, y) {
     notify("元件位置超出畫布座標範圍，請先平移或填滿視窗。", true);
     return;
   }
-  const component = {id: type + index, type, x, y};
+  const limit = Math.floor(positionLimit / WireRouter.gridSize) * WireRouter.gridSize;
+  const component = {id: type + index, type, x: Math.max(-limit, Math.min(limit, WireRouter.snap(x))),
+    y: Math.max(-limit, Math.min(limit, WireRouter.snap(y)))};
   if (definitions[type].parameter) component.value = definitions[type].value;
   model.components.push(component);
   selected = component.id;
@@ -624,25 +629,70 @@ function addComponent(type, x, y) {
   invalidate();
 }
 
+function alignImportedModel(candidate) {
+  const oldRouter = WireRouter.create(candidate.components, candidate.wires);
+  const oldRoutes = candidate.wires.map((wire, index) => oldRouter.route(index));
+  const oldJunctions = candidate.wires.map(wire => wire.branch && oldRoutes[wire.branch.parent] ?
+    WireRouter.pointAt(oldRoutes[wire.branch.parent], wire.branch.fraction) : null);
+  let adjusted = false, rerouted = false;
+  const limit = Math.floor(positionLimit / WireRouter.gridSize) * WireRouter.gridSize;
+  const align = value => Math.max(-limit, Math.min(limit, WireRouter.snap(value)));
+  for (const part of candidate.components) {
+    const x = align(part.x), y = align(part.y);
+    if (x !== part.x || y !== part.y) adjusted = true;
+    part.x = x; part.y = y;
+  }
+  for (const [index, wire] of candidate.wires.entries()) {
+    if (wire.route) {
+      const points = wire.route.map(p => ({x: align(p.x), y: align(p.y)}));
+      if (points.some((p, i) => p.x !== wire.route[i].x || p.y !== wire.route[i].y)) adjusted = true;
+      wire.route = WireRouter.simplify(points);
+      if (wire.route.length < 2) { delete wire.route; rerouted = true; }
+    }
+    if (wire.branch && oldJunctions[index]) {
+      const parent = WireRouter.create(candidate.components, candidate.wires).route(wire.branch.parent);
+      if (parent) {
+        const junction = oldJunctions[index];
+        const nearest = WireRouter.nearest(parent, {x: align(junction.x), y: align(junction.y)});
+        if (nearest && nearest.fraction > 0 && nearest.fraction < 1) {
+          wire.branch.fraction = nearest.fraction;
+        } else {
+          wire.branch.fraction = 0.5;
+        }
+        const point = WireRouter.pointAt(parent, wire.branch.fraction);
+        if ((point.x === parent[0].x && point.y === parent[0].y) ||
+            (point.x === parent.at(-1).x && point.y === parent.at(-1).y))
+          throw new Error("主線太短，無法在格點上保留分支接點。請先延長主線。");
+        if (point.x !== junction.x || point.y !== junction.y) adjusted = true;
+      }
+    }
+    if (wire.route && !WireRouter.create(candidate.components, candidate.wires).validManual(index, wire.route)) {
+      delete wire.route;
+      rerouted = true;
+    }
+  }
+  return {adjusted, rerouted};
+}
+
 function loadSample() {
   model = {
     diagramVersion: 2,
     components: [
-      {id: "voltage1", type: "voltage", value: 5, x: 25, y: 110},
-      {id: "resistor1", type: "resistor", value: 1000, x: 240, y: 64, rotation: 270},
-      {id: "capacitor1", type: "capacitor", value: 0.0001, x: 480, y: 110},
-      {id: "ground1", type: "ground", x: 240, y: 270}
+      {id: "voltage1", type: "voltage", value: 5, x: 24, y: 108},
+      {id: "resistor1", type: "resistor", value: 1000, x: 240, y: 60, rotation: 270},
+      {id: "capacitor1", type: "capacitor", value: 0.0001, x: 480, y: 108},
+      {id: "ground1", type: "ground", x: 240, y: 276}
     ],
     wires: [
       {from: {id: "voltage1", port: "p"}, to: {id: "resistor1", port: "p"},
-        route: [{x: 85, y: 110}, {x: 85, y: 35}, {x: 228, y: 35}, {x: 228, y: 100}, {x: 240, y: 100}]},
+        route: [{x: 84, y: 108}, {x: 84, y: 36}, {x: 228, y: 36}, {x: 228, y: 96}, {x: 240, y: 96}]},
       {from: {id: "resistor1", port: "n"}, to: {id: "capacitor1", port: "p"},
-        route: [{x: 360, y: 100}, {x: 372, y: 100}, {x: 372, y: 86}, {x: 540, y: 86}, {x: 540, y: 110}]},
+        route: [{x: 360, y: 96}, {x: 372, y: 96}, {x: 372, y: 84}, {x: 540, y: 84}, {x: 540, y: 108}]},
       {from: {id: "capacitor1", port: "n"}, to: {id: "voltage1", port: "n"},
-        route: [{x: 540, y: 182}, {x: 540, y: 240}, {x: 85, y: 240}, {x: 85, y: 182}]},
+        route: [{x: 540, y: 180}, {x: 540, y: 240}, {x: 84, y: 240}, {x: 84, y: 180}]},
       {from: {id: "ground1", port: "p"}, to: {id: "voltage1", port: "n"},
-        branch: {parent: 2, fraction: 298 / 571},
-        route: [{x: 300, y: 270}, {x: 300, y: 240}]}
+        branch: {parent: 2, fraction: 300 / 576},
+        route: [{x: 300, y: 276}, {x: 300, y: 240}]}
     ],
     stopTime: 1
   };
@@ -1021,9 +1071,11 @@ $("load").addEventListener("change", async event => {
       for (const part of candidate.components) part.rotation = ((part.rotation || 0) + 270) % 360;
       candidate.diagramVersion = 2;
     }
+    const {adjusted, rerouted} = alignImportedModel(candidate);
     model = candidate; selected = null; pending = null; $("wire-hint").textContent = "就緒"; $("stop-time").value = model.stopTime;
     activateTab("tab-modeling", primaryTabs); activateTab("tab-model-view", viewTabs);
-    render(); fitView(); invalidate(); notify("模型已匯入。");
+    render(); fitView(); invalidate();
+    notify(`模型已匯入。${adjusted ? " 元件與線路已對齊格點。" : ""}${rerouted ? " 部分手動線路已重新繞線。" : ""}`);
   } catch (error) { notify(`匯入失敗：${error.message}`, true); }
   finally { event.target.value = ""; }
 });

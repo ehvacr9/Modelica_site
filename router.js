@@ -2,6 +2,9 @@
 
 const WireRouter = (() => {
   const clearance = 12;
+  const gridSize = 12;
+  const snap = value => Math.round(value / gridSize) * gridSize || 0;
+  const onGrid = value => Math.abs(value - snap(value)) < 1e-8;
 
   function port(part, name) {
     const directions = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -66,7 +69,8 @@ const WireRouter = (() => {
     const vertical = old.x === next.x;
     let result;
     if (route.length === 2) {
-      const middle = vertical ? (endpoint.y + next.y) / 2 : (endpoint.x + next.x) / 2;
+      let middle = vertical ? (endpoint.y + next.y) / 2 : (endpoint.x + next.x) / 2;
+      if (onGrid(endpoint.x) && onGrid(endpoint.y) && onGrid(next.x) && onGrid(next.y)) middle = snap(middle);
       result = vertical
         ? [endpoint, {x: endpoint.x, y: middle}, {x: next.x, y: middle}, next]
         : [endpoint, {x: middle, y: endpoint.y}, {x: middle, y: next.y}, next];
@@ -92,11 +96,17 @@ const WireRouter = (() => {
     const total = lengths.reduce((a, b) => a + b, 0);
     if (!total) return null;
     let remaining = total * fraction;
+    if (route.every(p => onGrid(p.x) && onGrid(p.y))) {
+      remaining = snap(remaining);
+      if (fraction > 0 && fraction < 1 && total >= 2 * gridSize)
+        remaining = Math.max(gridSize, Math.min(total - gridSize, remaining));
+    }
     for (let i = 0; i < lengths.length; i++) {
       if (remaining <= lengths[i] || i === lengths.length - 1) {
         const ratio = Math.max(0, Math.min(1, remaining / lengths[i]));
-        return {x: route[i].x + (route[i + 1].x - route[i].x) * ratio,
-          y: route[i].y + (route[i + 1].y - route[i].y) * ratio};
+        const x = route[i].x + (route[i + 1].x - route[i].x) * ratio;
+        const y = route[i].y + (route[i + 1].y - route[i].y) * ratio;
+        return {x: onGrid(x) ? snap(x) : x, y: onGrid(y) ? snap(y) : y};
       }
       remaining -= lengths[i];
     }
@@ -204,12 +214,15 @@ const WireRouter = (() => {
 
   function create(components, wires) {
     let spacing = clearance;
+    const gridAligned = components.every(part => onGrid(part.x) && onGrid(part.y));
     for (let i = 0; i < components.length; i++) for (let j = i + 1; j < components.length; j++) {
       const a = components[i], b = components[j];
       const gapX = Math.max(a.x - (b.x + 120), b.x - (a.x + 120), 0);
       const gapY = Math.max(a.y - (b.y + 72), b.y - (a.y + 72), 0);
       const gap = Math.max(gapX, gapY);
-      if (gap > 0) spacing = Math.min(spacing, gap / 3);
+      if (gridAligned) {
+        if (gap < gridSize * 3) spacing = 0;
+      } else if (gap > 0) spacing = Math.min(spacing, gap / 3);
       else spacing = Math.min(spacing, 0.001);
     }
     const parts = new Map(components.map(part => [part.id, part]));
@@ -222,7 +235,8 @@ const WireRouter = (() => {
       if (!part) return null;
       const position = port(part, end.port);
       const point = {x: position.x, y: position.y};
-      return {point, stub: {x: point.x + position.dx * spacing, y: point.y + position.dy * spacing}, id: part.id};
+      const stubLength = gridAligned ? gridSize : spacing;
+      return {point, stub: {x: point.x + position.dx * stubLength, y: point.y + position.dy * stubLength}, id: part.id};
     }
     const endpoints = wires.map(wire => [endpoint(wire.from), endpoint(wire.to)]);
     const cache = new Map();
@@ -359,8 +373,9 @@ const WireRouter = (() => {
           points.at(-1).x !== b.point.x || points.at(-1).y !== b.point.y) return false;
       const outward = (point, end) => (point.x - end.point.x) * (end.stub.x - end.point.x) +
         (point.y - end.point.y) * (end.stub.y - end.point.y);
-      if (outward(points[1], a) < spacing * spacing - 1e-9 ||
-          (b.id !== null && outward(points.at(-2), b) < spacing * spacing - 1e-9)) return false;
+      const stubLength = gridAligned ? gridSize : spacing;
+      if (outward(points[1], a) < stubLength * stubLength - 1e-9 ||
+          (b.id !== null && outward(points.at(-2), b) < stubLength * stubLength - 1e-9)) return false;
       return points.slice(1).every((point, i) => {
         const previous = points[i];
         if ((point.x !== previous.x && point.y !== previous.y) ||
@@ -374,5 +389,5 @@ const WireRouter = (() => {
     }
     return {route, validManual};
   }
-  return {create, port, shiftSegment, moveEndpoint, crossings, pointAt, nearest};
+  return {create, port, shiftSegment, moveEndpoint, crossings, pointAt, nearest, simplify, snap, onGrid, gridSize};
 })();

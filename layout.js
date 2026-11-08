@@ -36,15 +36,15 @@ const CircuitLayout = (() => {
       const columns = 6, rows = Math.max(1, Math.ceil(ordinary.length / columns));
       ordinary.forEach((part, i) => {
         part.x = (i % columns) * 240;
-        part.y = top + Math.floor(i / columns) * 200;
+        part.y = top + Math.floor(i / columns) * 204;
         part.rotation = part.type === "resistor" ? 270 : 0;
       });
       grounds.forEach((part, i) => {
         part.x = (i % columns) * 240;
-        part.y = top + rows * 200 + Math.floor(i / columns) * 160;
+        part.y = top + rows * 204 + Math.floor(i / columns) * 168;
         part.rotation = 0;
       });
-      top += rows * 200 + Math.ceil(grounds.length / columns) * 160 + 160;
+      top += rows * 204 + Math.ceil(grounds.length / columns) * 168 + 168;
     }
     return parts;
   }
