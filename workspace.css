@@ -25,6 +25,8 @@
 .modeling-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
 .canvas-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .canvas-navigation output { min-width: 46px; text-align: center; color: #66778d; font-size: 12px; }
+.canvas-container { display: flex; flex-direction: column; }
+.canvas-header, .canvas-footer { flex-shrink: 0; }
 .canvas { touch-action: none; cursor: grab; }
 .canvas.panning { cursor: grabbing; }
 #canvas-world { position: absolute; inset: 0; transform-origin: 0 0; pointer-events: none; }
@@ -72,6 +74,18 @@
 .replay-controls input { flex: 1 1 120px; min-width: 90px; accent-color: #536eef; }
 .replay-controls output { min-width: 110px; color: #526174; font-variant-numeric: tabular-nums; }
 .replay-hint { margin-top: 9px; color: #8d9aac; font-size: 11px; }
+@media(min-width: 701px) {
+  .layout { height: max(580px, calc(100vh - 74px)); height: max(580px, calc(100dvh - 74px)); }
+  .layout > .sidebar, .layout > .inspector { min-height: 0; overflow-y: auto; }
+  .workspace { display: flex; flex-direction: column; min-height: 0; }
+  .primary-tabs, .modeling-toolbar, .view-tabs { flex-shrink: 0; }
+  #modeling { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+  #model-view, #code-view { flex: 1; min-height: 0; }
+  #model-view .canvas-container { height: 100%; }
+  #model-view .canvas { flex: 1; height: auto; min-height: 0; }
+  #code-view { display: flex; flex-direction: column; }
+  #code-view pre { flex: 1; height: auto; min-height: 0; overflow: auto; }
+}
 @media(max-width: 1100px) and (min-width: 701px) {
   .layout { grid-template-columns: 190px minmax(0, 1fr) 210px; }
   .layout > .inspector { grid-column: 3; grid-row: 1; display: flex; flex-direction: column; gap: 0; }
@@ -82,6 +96,7 @@
   .inspector { display: flex; flex-direction: column; }
   .workspace-panel { margin-top: 16px; }
   .workspace-table-wrap { max-height: 180px; }
+  .canvas { height: max(350px, 60vh); height: max(350px, 60dvh); }
   .plotting-panel #plot { height: 220px; }
   #plot-y-ticks { height: 220px; width: 64px; flex-basis: 64px; }
 }

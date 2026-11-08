@@ -9,6 +9,28 @@ document.getElementById("app").addEventListener("load", async event => {
   const test = (name, fn) => tests.push([name, fn]);
   const near = (a, b) => Math.abs(a - b) < 0.001;
 
+  test("desktop canvas grows with viewport and view tabs stay at the bottom", () => {
+    const frame = document.getElementById("app"), original = frame.style.cssText;
+    const measure = height => {
+      frame.style.width = "1100px"; frame.style.height = `${height}px`;
+      const bounds = element => element.getBoundingClientRect();
+      return {canvas: bounds($("canvas")).height, tabs: bounds(doc.querySelector(".view-tabs")).bottom,
+        workspace: bounds(doc.querySelector(".workspace")).bottom};
+    };
+    try {
+      const small = measure(900), large = measure(1200);
+      assert(Math.abs(large.canvas - small.canvas - 300) < 2, "畫布高度應隨視窗高度成長");
+      assert(large.tabs <= 1200 && Math.abs(large.workspace - large.tabs - 20) < 2,
+        "視圖分頁應保持在工作區底部");
+      $("tab-code-view").click();
+      const code = measure(1200);
+      assert(Math.abs(code.tabs - large.tabs) < 2 && $("code-view").clientHeight > 700,
+        "切換程式碼視圖時分頁應保持在底部");
+      $("tab-model-view").click();
+      $("fit-view").click();
+      assert($("canvas").clientHeight > 700, "填滿視窗應使用延伸後的畫布");
+    } finally { frame.style.cssText = original; $("tab-model-view").click(); }
+  });
   test("layout confirmation preserves data or arranges without changing topology and results", () => {
     app.loadSample();
     app.showResults({names: ["time", "capacitor1.v"], columns: [[0, 1], [0, 5]], timeIndex: 0});
