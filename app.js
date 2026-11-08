@@ -1,10 +1,10 @@
 "use strict";
 
 const definitions = {
-  voltage: {name: "直流電壓源", english: "DC Voltage", icon: "⊕", parameter: "電壓 V", unit: "V", value: 5},
-  resistor: {name: "電阻", english: "Resistor", icon: "▱", parameter: "電阻 R", unit: "Ω", value: 1000},
-  capacitor: {name: "電容", english: "Capacitor", icon: "⊣", parameter: "電容 C", unit: "F", value: 0.0001},
-  ground: {name: "接地", english: "Ground", icon: "⏚"}
+  voltage: {name: "直流電壓源", icon: "⊕", parameter: "電壓 V", unit: "V", value: 5},
+  resistor: {name: "電阻", icon: "▱", parameter: "電阻 R", unit: "Ω", value: 1000},
+  capacitor: {name: "電容", icon: "⊣", parameter: "電容 C", unit: "F", value: 0.0001},
+  ground: {name: "接地", icon: "⏚"}
 };
 const $ = id => document.getElementById(id);
 let model = {components: [], wires: [], stopTime: 1};
@@ -89,6 +89,23 @@ function wireTabs(choices) {
 wireTabs(primaryTabs);
 wireTabs(viewTabs);
 
+function setPanelExpanded(toggleId, panelId, collapsedClass, expanded, label) {
+  const toggle = $(toggleId);
+  $(panelId).hidden = !expanded;
+  document.querySelector(".layout").classList.toggle(collapsedClass, !expanded);
+  toggle.setAttribute("aria-expanded", String(expanded));
+  toggle.textContent = `${expanded ? "收合" : "展開"}${label}`;
+}
+
+for (const [toggleId, panelId, collapsedClass, label] of [
+  ["toggle-library", "library-panel", "library-collapsed", "元件庫"],
+  ["toggle-inspector", "inspector-panel", "inspector-collapsed", "右側欄"]
+]) {
+  $(toggleId).addEventListener("click", () => {
+    setPanelExpanded(toggleId, panelId, collapsedClass, $(toggleId).getAttribute("aria-expanded") !== "true", label);
+  });
+}
+
 function portPosition(endpoint) {
   const item = model.components.find(part => part.id === endpoint.id);
   if (!item) return null;
@@ -135,7 +152,7 @@ function connect(endpoint) {
       invalidate();
     }
     pending = null;
-    $("wire-hint").textContent = "READY";
+    $("wire-hint").textContent = "就緒";
   }
   render();
 }
@@ -273,7 +290,7 @@ function loadSample() {
     stopTime: 1
   };
   $("stop-time").value = model.stopTime;
-  selected = null; pending = null; $("wire-hint").textContent = "READY";
+  selected = null; pending = null; $("wire-hint").textContent = "就緒";
   render(); invalidate();
 }
 
@@ -341,8 +358,8 @@ for (const [type, def] of Object.entries(definitions)) {
   const button = document.createElement("button");
   button.className = "library-item"; button.draggable = true;
   const icon = document.createElement("span"); icon.className = "component-icon"; icon.textContent = def.icon;
-  const text = document.createElement("span"), name = document.createElement("strong"), english = document.createElement("small");
-  name.textContent = def.name; english.textContent = def.english; text.append(name, english); button.append(icon, text);
+  const text = document.createElement("span"), name = document.createElement("strong");
+  name.textContent = def.name; text.append(name); button.append(icon, text);
   button.addEventListener("dragstart", event => event.dataTransfer.setData("text/plain", type));
   button.addEventListener("click", () => {
     activateTab("tab-modeling", primaryTabs); activateTab("tab-model-view", viewTabs);
@@ -360,25 +377,25 @@ $("canvas").addEventListener("drop", event => {
 });
 $("canvas").addEventListener("click", event => {
   if (event.target === $("canvas") || event.target === $("wires")) {
-    selected = null; pending = null; $("wire-hint").textContent = "READY"; render();
+    selected = null; pending = null; $("wire-hint").textContent = "就緒"; render();
   }
 });
 function removeSelected() {
   if (!selected) return;
   model.components = model.components.filter(item => item.id !== selected);
   model.wires = model.wires.filter(wire => wire.from.id !== selected && wire.to.id !== selected);
-  selected = null; pending = null; $("wire-hint").textContent = "READY"; render(); invalidate();
+  selected = null; pending = null; $("wire-hint").textContent = "就緒"; render(); invalidate();
 }
 $("delete").addEventListener("click", removeSelected);
 document.addEventListener("keydown", event => {
   if ((event.key === "Delete" || event.key === "Backspace") && !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {
     event.preventDefault(); removeSelected();
   }
-  if (event.key === "Escape") { pending = null; $("wire-hint").textContent = "READY"; render(); }
+  if (event.key === "Escape") { pending = null; $("wire-hint").textContent = "就緒"; render(); }
 });
 $("clear").addEventListener("click", () => {
   if (!confirm("確定要清空畫布？")) return;
-  model.components = []; model.wires = []; selected = null; pending = null; $("wire-hint").textContent = "READY"; render(); invalidate();
+  model.components = []; model.wires = []; selected = null; pending = null; $("wire-hint").textContent = "就緒"; render(); invalidate();
 });
 $("sample").addEventListener("click", () => {
   if (model.components.length && !confirm("載入範例會取代目前的模型，確定繼續？")) return;
@@ -399,7 +416,7 @@ $("simulate").addEventListener("click", async () => {
   button.disabled = true; button.textContent = "模擬中…"; $("result-state").textContent = "執行中";
   try {
     const result = await post("/api/simulate", model);
-    if (current === revision) { showResults(result); notify("OpenModelica 模擬完成；請在 Workspace 選擇變數，或切換到 Plotting。"); }
+    if (current === revision) { showResults(result); notify("OpenModelica 模擬完成；請在變數工作區選擇變數，或切換到繪圖區。"); }
     else notify("模型已變更，已忽略舊的模擬結果。");
   } catch (error) {
     if (current === revision) $("result-state").textContent = "模擬失敗";
@@ -428,7 +445,7 @@ $("load").addEventListener("change", async event => {
         candidate.components.some(item => !Number.isFinite(item.x) || !Number.isFinite(item.y) || item.x < 0 || item.y < 0 || item.x > 10000 || item.y > 10000)) {
       throw new Error("元件位置或模擬時間無效。");
     }
-    model = candidate; selected = null; pending = null; $("wire-hint").textContent = "READY"; $("stop-time").value = model.stopTime;
+    model = candidate; selected = null; pending = null; $("wire-hint").textContent = "就緒"; $("stop-time").value = model.stopTime;
     render(); invalidate(); notify("模型已匯入。");
   } catch (error) { notify(`匯入失敗：${error.message}`, true); }
   finally { event.target.value = ""; }

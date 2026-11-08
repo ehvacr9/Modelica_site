@@ -1,5 +1,16 @@
 [hidden] { display: none !important; }
 .sidebar { display: flex; flex-direction: column; min-width: 0; }
+.layout { grid-template-columns: 235px minmax(0, 1fr) 240px; }
+.layout.library-collapsed { grid-template-columns: 0 minmax(0, 1fr) 240px; }
+.layout.inspector-collapsed { grid-template-columns: 235px minmax(0, 1fr) 0; }
+.layout.library-collapsed.inspector-collapsed { grid-template-columns: 0 minmax(0, 1fr) 0; }
+.layout > .sidebar { grid-column: 1; grid-row: 1; }
+.layout > .workspace { grid-column: 2; grid-row: 1; }
+.layout > .inspector { grid-column: 3; grid-row: 1; }
+.inspector { display: flex; flex-direction: column; min-width: 0; }
+.inspector .simulation-settings { flex-shrink: 0; }
+.panel-controls { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 15px; }
+.panel-controls .button { font-size: 11px; }
 .workspace-panel { border-top: 1px solid #edf0f5; margin-top: 24px; padding-top: 18px; min-height: 220px; }
 .workspace-title { display: flex; align-items: center; justify-content: space-between; }
 .workspace-table-wrap { max-height: 300px; overflow: auto; margin-top: 12px; border: 1px solid #edf0f5; border-radius: 7px; }
@@ -27,7 +38,17 @@
 .plotting-panel #plot-area { padding-top: 30px; }
 .plotting-panel #plot { height: 310px; }
 .plotting-panel #plot-label { font-size: 12px; font-weight: 600; }
+@media(max-width: 1100px) and (min-width: 701px) {
+  .layout { grid-template-columns: 190px minmax(0, 1fr) 210px; }
+  .layout.library-collapsed { grid-template-columns: 0 minmax(0, 1fr) 210px; }
+  .layout.inspector-collapsed { grid-template-columns: 190px minmax(0, 1fr) 0; }
+  .layout.library-collapsed.inspector-collapsed { grid-template-columns: 0 minmax(0, 1fr) 0; }
+  .layout > .inspector { grid-column: 3; grid-row: 1; display: flex; flex-direction: column; gap: 0; }
+  .inspector .simulation-settings { border-top: 1px solid #edf0f5; padding-top: 18px; }
+  .inspector .properties-empty { min-height: 120px; }
+}
 @media(max-width: 700px) {
+  .inspector { display: flex; flex-direction: column; }
   .workspace-panel { margin-top: 16px; }
   .workspace-table-wrap { max-height: 180px; }
   .plotting-panel #plot { height: 220px; }
