@@ -30,6 +30,8 @@
 #canvas-world { position: absolute; inset: 0; transform-origin: 0 0; pointer-events: none; }
 #canvas-world .node { pointer-events: auto; }
 #canvas-world #wires { pointer-events: none; }
+.wire.wire-unrouted { stroke: #d35c5c; stroke-dasharray: 6 4; }
+.wire-warning { padding: 8px 16px; border-top: 1px solid #f1dada; color: #a53e44; font-size: 11px; line-height: 1.5; }
 .view-tabs { display: flex; width: fit-content; gap: 3px; margin-top: 12px; padding: 4px; border-radius: 8px; background: #e9edf5; }
 .view-tab { padding: 8px 13px; border-radius: 6px; font-size: 12px; }
 .view-tab.active { background: white; color: #5069df; box-shadow: 0 1px 5px #253c5b12; }

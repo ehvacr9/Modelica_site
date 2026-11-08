@@ -153,24 +153,31 @@ function portPosition(endpoint) {
 function drawWires() {
   const svg = $("wires");
   svg.replaceChildren();
+  const router = WireRouter.create(model.components, model.wires);
+  const failed = [];
   for (const [index, wire] of model.wires.entries()) {
     const a = portPosition(wire.from), b = portPosition(wire.to);
     if (!a || !b) continue;
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const mid = (a.x + b.x) / 2;
-    path.setAttribute("d", `M ${a.x} ${a.y} H ${mid} V ${b.y} H ${b.x}`);
-    path.setAttribute("class", "wire");
+    const points = router.route(index);
+    if (!points) failed.push(`${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}`);
+    const route = points || [a, {x: (a.x + b.x) / 2, y: a.y}, {x: (a.x + b.x) / 2, y: b.y}, b];
+    path.setAttribute("d", route.map((point, i) => `${i ? "L" : "M"} ${point.x} ${point.y}`).join(" "));
+    path.setAttribute("class", points ? "wire" : "wire wire-unrouted");
     const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = "點擊刪除此連線";
+    title.textContent = "點擊後確認是否刪除連線";
     path.append(title);
     path.addEventListener("click", event => {
       event.stopPropagation();
+      if (!confirm(`確定刪除連線 ${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}？`)) return;
       model.wires.splice(index, 1);
       render();
       invalidate();
     });
     svg.append(path);
   }
+  $("wire-warning").hidden = !failed.length;
+  $("wire-warning").textContent = failed.length ? `無法繞開鄰近或重疊元件的連線：${failed.join("、")}。請移開元件。` : "";
 }
 
 function connect(endpoint) {

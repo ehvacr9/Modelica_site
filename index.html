@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpenModelica Studio · 雛形</title>
   <link rel="stylesheet" href="./style.css">
-  <link rel="stylesheet" href="./workspace.css?v=20261109-6">
+  <link rel="stylesheet" href="./workspace.css?v=20261109-7">
 </head>
 <body>
   <header class="topbar">
@@ -30,7 +30,7 @@
           <div id="canvas-navigation" class="canvas-navigation" aria-label="畫布視角控制"><button id="zoom-out" class="button subtle" title="縮小畫布" aria-label="縮小畫布">−</button><output id="zoom-level" aria-label="畫布縮放比例">100%</output><button id="zoom-in" class="button subtle" title="放大畫布" aria-label="放大畫布">＋</button><button id="fit-view" class="button subtle">填滿視窗</button></div>
           <div class="canvas-tools"><button id="delete" class="icon-button" title="刪除選取元件">⌫</button><button id="clear" class="button subtle">清空畫布</button></div>
         </div>
-        <div id="model-view" role="tabpanel" aria-labelledby="tab-model-view"><div class="canvas-container"><div class="canvas-header"><span><i></i> 模型畫布</span><span id="count">0 個元件</span></div><div id="canvas" class="canvas" aria-label="電路建模畫布"><div id="canvas-world"><svg id="wires" aria-label="連線"></svg></div><div id="empty" class="empty">從左側新增元件，開始建立模型</div></div><div class="canvas-footer"><span>拖曳空白處平移，滾輪縮放；點擊端點連線</span><span id="wire-hint">就緒</span></div></div></div>
+        <div id="model-view" role="tabpanel" aria-labelledby="tab-model-view"><div class="canvas-container"><div class="canvas-header"><span><i></i> 模型畫布</span><span id="count">0 個元件</span></div><div id="canvas" class="canvas" aria-label="電路建模畫布"><div id="canvas-world"><svg id="wires" aria-label="連線"></svg></div><div id="empty" class="empty">從左側新增元件，開始建立模型</div></div><div class="canvas-footer"><span>拖曳空白處平移，滾輪縮放；點擊端點連線</span><span id="wire-hint">就緒</span></div><p id="wire-warning" class="wire-warning" role="status" hidden></p></div></div>
         <div id="code-view" class="code-view" role="tabpanel" aria-labelledby="tab-code-view" hidden><div class="code-header"><div><div class="eyebrow">產生的程式碼</div><h2>Modelica 程式碼 <span class="readonly">唯讀</span></h2></div><button id="copy" class="button subtle">複製</button></div><pre id="code">正在產生程式碼…</pre></div>
         <div class="view-tabs" role="tablist" aria-label="建模視圖">
           <button id="tab-model-view" class="view-tab active" role="tab" aria-selected="true" aria-controls="model-view">模型視圖</button>
@@ -66,6 +66,7 @@
   </main>
   <div id="message" class="message" role="status" hidden></div>
   <script src="./engine.js?v=20261109-3"></script>
-  <script src="./app.js?v=20261109-6"></script>
+  <script src="./router.js?v=20261109-7"></script>
+  <script src="./app.js?v=20261109-7"></script>
 </body>
 </html>
