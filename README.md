@@ -1,0 +1,27 @@
+# Modelica Studio 網頁雛形
+
+以 OpenModelica 建立電路模型的靜態網站，適合部署到 GitHub Pages。元件庫包含直流電壓源、電阻、電容及接地；可連線、設定參數、匯入／匯出 JSON，並顯示 Modelica 程式碼和電容電壓曲線。
+
+## 模擬方式
+
+使用 OpenModelica 官方 Playground 的瀏覽器版 WebAssembly 編譯器，在瀏覽器本機執行模型，而非呼叫 OMWebBook 的遠端模擬 API。模型及其模擬結果不會由本網站上傳到伺服器。首次執行須下載約 75 MB 編譯器與 Modelica Standard Library；函式庫由 OpenModelica 指定的來源下載，因此需要網路。載入和模擬速度取決於網路、瀏覽器及電腦效能。
+
+此版本的 OpenModelica 是開發版，瀏覽器的支援能力與官方資源可用性可能改變；若資源下載或模擬失敗，介面會顯示錯誤。需使用支援 WebAssembly 與 module worker 的現代瀏覽器。結果圖目前顯示第一個電容的電壓；複雜電路、多物理領域與完整 Modelica 編輯尚不支援。
+
+## 本機預覽
+
+在此資料夾執行（Python 僅供本機預覽，GitHub Pages 不需要 Python）：
+
+```powershell
+py -m http.server 8000 --bind 127.0.0.1
+```
+
+使用瀏覽器開啟 <http://127.0.0.1:8000/>。不要直接以 `file://` 開啟，因為瀏覽器會限制 worker 與資源載入。按 `Ctrl+C` 停止。
+
+## GitHub Pages
+
+將本資料夾推送至 GitHub 儲存庫的 `main` 分支，在儲存庫 **Settings → Pages → Build and deployment → Source** 選擇 **GitHub Actions**。推送後執行 `.github/workflows/pages.yml`，並從 Actions 或 Pages 設定查看發布狀態及網址。
+
+## 第三方元件
+
+`vendor/` 內的 OpenModelica WebAssembly 編譯器及相關檔案，取自 [OpenModelica Playground 官方發行檔](https://playground.openmodelica.org/OpenModelicaCompiler-web-latest.zip)，下載於 2026-11-09；原始 ZIP 的 SHA-256 為 `5691153c4c4d2a1ad2e28094a77ea101046e844e26625d60c75509de58935956`。測試版本為 `v1.28.0-dev.1805+g3d51a586ef.rust`。其 [OpenModelica 原始碼](https://github.com/OpenModelica/OpenModelica/tree/3d51a586ef) 與 [授權條款](vendor/OSMC-License.txt) 由 Open Source Modelica Consortium 提供；另需遵守各相依元件的授權。上游的 nightly 發行檔可能變更，不能假設 `latest` 日後仍是同一版本。

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenModelica Studio · 雛形</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-icon">◈</span><div><strong>Modelica Studio</strong><small>OPENMODELICA WORKSPACE</small></div><span class="badge">PROTOTYPE</span></div>
+    <div class="top-actions"><span id="compiler-status" class="status">模擬時載入 OpenModelica</span><button id="sample" class="button subtle">載入範例</button><button id="save" class="button subtle">匯出模型</button><label class="button subtle">匯入模型<input id="load" type="file" accept=".json,application/json" hidden></label><button id="simulate" class="button primary">▶　執行模擬</button></div>
+  </header>
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="section-label">COMPONENT LIBRARY</div>
+      <h2>元件庫</h2><p class="muted">拖曳元件至畫布，或點擊新增。</p>
+      <div class="library-title">⌁　電氣元件 <span>ANALOG</span></div>
+      <div id="library" class="library"></div>
+      <div class="guide"><div class="guide-icon">✦</div><strong>快速開始</strong><p>拖曳元件至畫布。依序點擊兩個端點建立連線，選取元件後可編輯參數。</p><span>TIP　Delete 可刪除選取元件</span></div>
+    </aside>
+    <section class="workspace">
+      <div class="workspace-heading"><div><div class="eyebrow">WORKSPACE / ELECTRICAL</div><h1>電路建模工作區 <span>雛形</span></h1><p>建立你的第一個物理系統模型</p></div><div class="canvas-tools"><button id="delete" class="icon-button" title="刪除選取元件">⌫</button><button id="clear" class="button subtle">清空畫布</button></div></div>
+      <div class="canvas-container"><div class="canvas-header"><span><i></i> MODEL CANVAS</span><span id="count">0 個元件</span></div><div id="canvas" class="canvas" aria-label="電路建模畫布"><svg id="wires" aria-label="連線"></svg><div id="empty" class="empty">從左側新增元件，開始建立模型</div></div><div class="canvas-footer"><span>●　點擊端點開始連線</span><span id="wire-hint">READY</span></div></div>
+      <div class="bottom">
+        <section class="panel result-panel"><div class="panel-heading"><div><div class="eyebrow">SIMULATION RESULT</div><h2>模擬結果</h2></div><span class="pill" id="result-state">尚未執行</span></div><div id="plot-empty" class="plot-empty"><span>⌁</span><strong>準備好進行模擬</strong><p>完成模型後，點擊右上角執行模擬</p></div><div id="plot-area" hidden><div id="plot-label"></div><svg id="plot" viewBox="0 0 600 190" preserveAspectRatio="none" aria-label="電容電壓隨時間變化圖"></svg><div id="plot-range"></div></div></section>
+        <section class="panel code-panel"><div class="panel-heading"><div><div class="eyebrow">GENERATED CODE</div><h2>Modelica 程式碼</h2></div><button id="copy" class="text-button">複製</button></div><pre id="code">正在產生程式碼…</pre></section>
+      </div>
+    </section>
+    <aside class="inspector"><div class="section-label">PROPERTIES</div><h2>屬性設定</h2><p class="muted">選取畫布中的元件以編輯。</p><div id="properties" class="properties-empty"><span>◇</span><strong>尚未選取元件</strong><p>點擊元件查看其屬性</p></div><div class="simulation-settings"><div class="section-label">SIMULATION</div><h3>模擬設定</h3><label for="stop-time">結束時間 <span>秒</span></label><input id="stop-time" type="number" min="0.000001" step="any" value="1"><p>使用 OpenModelica 執行暫態模擬。</p></div></aside>
+  </main>
+  <div id="message" class="message" role="status" hidden></div>
+  <script src="./engine.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
