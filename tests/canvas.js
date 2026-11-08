@@ -301,6 +301,77 @@ document.getElementById("app").addEventListener("load", async event => {
     components[2].x = 120; components[2].y = 0;
     assert(route() === null, "端點被遮擋時應回報無法繞線");
   });
+  test("moving a component preserves distant wire segments and branch junctions", () => {
+    app.loadSample();
+    const data = app.eval("model"), beforeCode = app.eval("CircuitEngine.generate(model)");
+    const beforeRouter = WireRouter.create(data.components, data.wires);
+    const before = data.wires.map((wire, i) => beforeRouter.route(i).map(p => ({...p})));
+    const oldJunction = WireRouter.pointAt(before[2], data.wires[3].branch.fraction);
+    const node = doc.querySelector('.node[aria-label="電阻 resistor1"]');
+    node.setPointerCapture = () => {};
+    for (const [type, x, y] of [["pointerdown", 100, 100], ["pointermove", 120, 110], ["pointerup", 120, 110]])
+      node.dispatchEvent(new app.PointerEvent(type, {bubbles: true, button: 0, pointerId: 7, clientX: x, clientY: y}));
+    const router = WireRouter.create(data.components, data.wires), routes = data.wires.map((wire, i) => router.route(i));
+    assert(routes.every(Boolean), "移動後所有線路都應連接");
+    assert(JSON.stringify(routes[2]) === JSON.stringify(before[2]) && JSON.stringify(routes[3]) === JSON.stringify(before[3]),
+      "未受阻擋的其他線路不應改變");
+    const junction = WireRouter.pointAt(routes[2], data.wires[3].branch.fraction);
+    assert(near(junction.x, oldJunction.x) && near(junction.y, oldJunction.y), "接點位置應保持不變");
+    assert(routes[0][0].x === before[0][0].x && routes[0][1].y === before[0][1].y &&
+      routes[1].at(-1).x === before[1].at(-1).x && routes[1].at(-2).y === before[1].at(-2).y,
+      "移動元件兩端以外的線路應維持原有位置");
+    assert(app.eval("CircuitEngine.generate(model)") === beforeCode, "移動不得改變電氣連接");
+    app.loadSample();
+  });
+  test("endpoint adjustment follows both symbol orientations", () => {
+    const vertical = [{x: 0, y: 0}, {x: 0, y: 100}, {x: 100, y: 100}, {x: 100, y: 200}];
+    const moved = WireRouter.moveEndpoint(vertical, {x: 20, y: 10}, true);
+    assert(JSON.stringify(moved) === JSON.stringify([{x: 20, y: 10}, {x: 20, y: 100},
+      {x: 100, y: 100}, {x: 100, y: 200}]), "直立元件應維持遠端線路");
+    const horizontal = [{x: 0, y: 0}, {x: 100, y: 0}, {x: 100, y: 100}, {x: 200, y: 100}];
+    const other = WireRouter.moveEndpoint(horizontal, {x: 220, y: 120}, false);
+    assert(JSON.stringify(other) === JSON.stringify([{x: 0, y: 0}, {x: 100, y: 0},
+      {x: 100, y: 120}, {x: 220, y: 120}]), "水平元件應維持遠端線路");
+  });
+  test("moving a branch source or parent preserves junction and saved routes", () => {
+    app.loadSample();
+    const data = app.eval("model"), junction = {x: 300, y: 240};
+    const drag = (name, dx, dy) => {
+      const node = doc.querySelector(`.node[aria-label="${name}"]`);
+      node.setPointerCapture = () => {};
+      for (const [type, x, y] of [["pointerdown", 100, 100], ["pointermove", 100 + dx, 100 + dy], ["pointerup", 100 + dx, 100 + dy]])
+        node.dispatchEvent(new app.PointerEvent(type, {bubbles: true, button: 0, pointerId: 7, clientX: x, clientY: y}));
+    };
+    for (const [name, dx, dy] of [["接地 ground1", 25, 30], ["電容 capacitor1", 30, 20]]) {
+      drag(name, dx, dy);
+      const saved = JSON.parse(JSON.stringify(data));
+      const router = WireRouter.create(saved.components, saved.wires);
+      const parent = router.route(2), branch = router.route(3);
+      assert(parent && branch, "移動後主線與分支均應可繞線");
+      const point = WireRouter.pointAt(parent, saved.wires[3].branch.fraction);
+      assert(near(point.x, junction.x) && near(point.y, junction.y) &&
+        near(branch.at(-1).x, point.x) && near(branch.at(-1).y, point.y), "接點與分支必須保持連接");
+      assert(saved.wires.every((wire, i) => router.validManual(i, wire.route)), "保存的線路須能重新載入");
+      assert(app.eval("CircuitEngine.generate(model)").includes("connect(ground1.p, voltage1.n)"), "分支電氣連接必須保留");
+    }
+    app.loadSample();
+  });
+  test("moving an unrelated obstacle reroutes only when it blocks a wire", () => {
+    app.eval(`model = {components: [
+      {id:"a",type:"resistor",value:1,x:0,y:0,rotation:270},
+      {id:"b",type:"resistor",value:1,x:500,y:0,rotation:270},
+      {id:"block",type:"resistor",value:1,x:220,y:200,rotation:0}],
+      wires:[{from:{id:"a",port:"n"},to:{id:"b",port:"p"}}],stopTime:1}`);
+    app.render(); app.fitView();
+    const node = doc.querySelector('.node[aria-label="電阻 block"]'), scale = app.eval("view.scale");
+    node.setPointerCapture = () => {};
+    for (const [type, y] of [["pointerdown", 300], ["pointermove", 300 - 200 * scale], ["pointerup", 300 - 200 * scale]])
+      node.dispatchEvent(new app.PointerEvent(type, {bubbles: true, button: 0, pointerId: 7, clientX: 100, clientY: y}));
+    const data = app.eval("model"), router = WireRouter.create(data.components, data.wires), route = router.route(0);
+    assert(route && route.length > 2 && router.validManual(0, route), "元件擋住原路徑時應重新繞線");
+    assert(route[0].x === 120 && route.at(-1).x === 500, "重新繞線不得改變電氣端點");
+    app.loadSample();
+  });
   test("wire deletion requires confirmation", () => {
     app.showResults({names: ["time", "capacitor1.v"], columns: [[0, 1], [0, 5]], timeIndex: 0});
     const count = $("count").textContent;

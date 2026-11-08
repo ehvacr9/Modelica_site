@@ -58,6 +58,35 @@ const WireRouter = (() => {
     return simplify([...before, movedA, movedB, ...after]);
   }
 
+  function moveEndpoint(points, endpoint, atStart) {
+    endpoint = {x: endpoint.x, y: endpoint.y};
+    const route = atStart ? points : [...points].reverse();
+    if (route.length < 2) return null;
+    const [old, next] = route;
+    const vertical = old.x === next.x;
+    let result;
+    if (route.length === 2) {
+      const middle = vertical ? (endpoint.y + next.y) / 2 : (endpoint.x + next.x) / 2;
+      result = vertical
+        ? [endpoint, {x: endpoint.x, y: middle}, {x: next.x, y: middle}, next]
+        : [endpoint, {x: middle, y: endpoint.y}, {x: middle, y: next.y}, next];
+    } else {
+      const direction = vertical ? Math.sign(next.y - old.y) : Math.sign(next.x - old.x);
+      const distance = vertical ? (next.y - endpoint.y) * direction : (next.x - endpoint.x) * direction;
+      const extension = distance < clearance ? clearance - distance : 0;
+      const corner = vertical ? {x: endpoint.x, y: next.y + direction * extension} :
+        {x: next.x + direction * extension, y: endpoint.y};
+      const remaining = route.slice(2).map(point => ({...point}));
+      if (extension && remaining.length > 1) {
+        if (vertical) remaining[0].y = corner.y;
+        else remaining[0].x = corner.x;
+      }
+      result = [endpoint, corner, ...remaining];
+    }
+    result = simplify(result);
+    return atStart ? result : result.reverse();
+  }
+
   function pointAt(route, fraction) {
     const lengths = route.slice(1).map((p, i) => Math.abs(p.x - route[i].x) + Math.abs(p.y - route[i].y));
     const total = lengths.reduce((a, b) => a + b, 0);
@@ -345,5 +374,5 @@ const WireRouter = (() => {
     }
     return {route, validManual};
   }
-  return {create, port, shiftSegment, crossings, pointAt, nearest};
+  return {create, port, shiftSegment, moveEndpoint, crossings, pointAt, nearest};
 })();

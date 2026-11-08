@@ -441,6 +441,43 @@ function connectToWire(index, route, point) {
   render(); invalidate();
 }
 
+function moveComponentRoutes(item, originalRoutes, originalWires) {
+  for (const [index, wire] of model.wires.entries()) {
+    const original = originalWires[index], oldRoute = originalRoutes[index];
+    if (wire.branch) {
+      wire.branch.fraction = original.branch.fraction;
+      const oldParent = originalRoutes[wire.branch.parent];
+      const parent = WireRouter.create(model.components, model.wires).route(wire.branch.parent);
+      if (oldParent && parent) {
+        const oldJunction = WireRouter.pointAt(oldParent, original.branch.fraction);
+        const nearest = WireRouter.nearest(parent, oldJunction);
+        if (nearest) wire.branch.fraction = Math.max(0.000001, Math.min(0.999999, nearest.fraction));
+      }
+    }
+    if (!oldRoute) continue;
+    let candidate = oldRoute;
+    if (wire.from.id === item.id)
+      candidate = WireRouter.moveEndpoint(candidate, portPosition(wire.from), true);
+    if (!wire.branch && wire.to.id === item.id && candidate)
+      candidate = WireRouter.moveEndpoint(candidate, portPosition(wire.to), false);
+    if (wire.branch && candidate) {
+      const parent = WireRouter.create(model.components, model.wires).route(wire.branch.parent);
+      const junction = parent && WireRouter.pointAt(parent, wire.branch.fraction);
+      if (junction && (candidate.at(-1).x !== junction.x || candidate.at(-1).y !== junction.y))
+        candidate = WireRouter.moveEndpoint(candidate, junction, false);
+    }
+    const router = WireRouter.create(model.components, model.wires);
+    if (candidate && router.validManual(index, candidate)) {
+      wire.route = candidate.map(point => ({...point}));
+    } else {
+      delete wire.route;
+      const route = WireRouter.create(model.components, model.wires).route(index);
+      if (route) wire.route = route.map(point => ({...point}));
+      else if (original.route) wire.route = original.route.map(point => ({...point}));
+    }
+  }
+}
+
 function makeNode(item) {
   const def = definitions[item.type];
   const node = document.createElement("div");
@@ -477,6 +514,7 @@ function makeNode(item) {
     document.querySelectorAll(".node").forEach(element => element.classList.remove("selected"));
     node.classList.add("selected");
     const startX = event.clientX, startY = event.clientY, x = item.x, y = item.y;
+    let originalRoutes, originalWires;
     let moved = false;
     node.setPointerCapture(event.pointerId);
     node.addEventListener("pointermove", move);
@@ -486,8 +524,14 @@ function makeNode(item) {
       const dx = e.clientX - startX, dy = e.clientY - startY;
       if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
       if (!moved) return;
+      if (!originalRoutes) {
+        const router = WireRouter.create(model.components, model.wires);
+        originalRoutes = model.wires.map((wire, index) => router.route(index));
+        originalWires = model.wires.map(wire => ({...wire, branch: wire.branch && {...wire.branch}}));
+      }
       item.x = Math.max(-positionLimit, Math.min(positionLimit, x + dx / view.scale));
       item.y = Math.max(-positionLimit, Math.min(positionLimit, y + dy / view.scale));
+      moveComponentRoutes(item, originalRoutes, originalWires);
       node.style.left = item.x + "px";
       node.style.top = item.y + "px";
       drawWires();
