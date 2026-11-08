@@ -1,20 +1,11 @@
 [hidden] { display: none !important; }
 .sidebar { display: flex; flex-direction: column; min-width: 0; }
 .layout { grid-template-columns: 235px minmax(0, 1fr) 240px; }
-.layout.library-collapsed { grid-template-columns: 0 minmax(0, 1fr) 240px; }
-.layout.inspector-collapsed { grid-template-columns: 235px minmax(0, 1fr) 0; }
-.layout.library-collapsed.inspector-collapsed { grid-template-columns: 0 minmax(0, 1fr) 0; }
 .layout > .sidebar { grid-column: 1; grid-row: 1; }
 .layout > .workspace { grid-column: 2; grid-row: 1; }
 .layout > .inspector { grid-column: 3; grid-row: 1; }
 .inspector { display: flex; flex-direction: column; min-width: 0; }
 .inspector .simulation-settings { flex-shrink: 0; }
-.workspace { position: relative; }
-.panel-toggle { position: absolute; z-index: 2; top: 50%; width: 28px; padding: 7px 4px; font-size: 16px; transform: translateY(-50%); }
-#toggle-library { left: 0; transform: translate(-50%, -50%); }
-#toggle-inspector { right: 0; transform: translate(50%, -50%); }
-.layout.library-collapsed #toggle-library { left: 14px; }
-.layout.inspector-collapsed #toggle-inspector { right: 14px; }
 .workspace-panel { border-top: 1px solid #edf0f5; margin-top: 24px; padding-top: 18px; min-height: 220px; }
 .workspace-title { display: flex; align-items: center; justify-content: space-between; }
 .workspace-table-wrap { max-height: 300px; overflow: auto; margin-top: 12px; border: 1px solid #edf0f5; border-radius: 7px; }
@@ -40,8 +31,13 @@
 .code-view pre { height: 390px; font-size: 12px; line-height: 1.8; }
 .plotting-panel .plot-empty { padding-top: 120px; }
 .plotting-panel #plot-area { padding-top: 30px; }
-.plotting-panel #plot { height: 310px; }
+.plotting-panel #plot { height: 310px; margin-top: 0; display: block; }
 .plotting-panel #plot-label { font-size: 12px; font-weight: 600; }
+#plot-y-title { color: #66778d; font-size: 12px; font-weight: 600; margin: 14px 0 8px; }
+.plot-chart { display: flex; gap: 8px; min-width: 0; }
+#plot-y-ticks { position: relative; height: 310px; width: 76px; flex: 0 0 76px; color: #8291a4; font-size: 10px; text-align: right; }
+#plot-y-ticks span { position: absolute; right: 0; transform: translateY(-50%); white-space: nowrap; }
+.plot-graph { flex: 1; min-width: 0; }
 .replay-controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-top: 16px; color: #66778d; font-size: 12px; }
 .replay-controls select { border: 1px solid #e2e8f0; border-radius: 6px; padding: 7px; color: #526174; background: white; }
 .replay-controls input { flex: 1 1 120px; min-width: 90px; accent-color: #536eef; }
@@ -49,18 +45,14 @@
 .replay-hint { margin-top: 9px; color: #8d9aac; font-size: 11px; }
 @media(max-width: 1100px) and (min-width: 701px) {
   .layout { grid-template-columns: 190px minmax(0, 1fr) 210px; }
-  .layout.library-collapsed { grid-template-columns: 0 minmax(0, 1fr) 210px; }
-  .layout.inspector-collapsed { grid-template-columns: 190px minmax(0, 1fr) 0; }
-  .layout.library-collapsed.inspector-collapsed { grid-template-columns: 0 minmax(0, 1fr) 0; }
   .layout > .inspector { grid-column: 3; grid-row: 1; display: flex; flex-direction: column; gap: 0; }
   .inspector .simulation-settings { border-top: 1px solid #edf0f5; padding-top: 18px; }
   .inspector .properties-empty { min-height: 120px; }
 }
 @media(max-width: 700px) {
   .inspector { display: flex; flex-direction: column; }
-  #toggle-library, .layout.library-collapsed #toggle-library { left: 50%; top: 0; transform: translate(-50%, -50%); }
-  #toggle-inspector, .layout.inspector-collapsed #toggle-inspector { left: 50%; right: auto; top: auto; bottom: 0; transform: translate(-50%, 50%); }
   .workspace-panel { margin-top: 16px; }
   .workspace-table-wrap { max-height: 180px; }
   .plotting-panel #plot { height: 220px; }
+  #plot-y-ticks { height: 220px; width: 64px; flex-basis: 64px; }
 }

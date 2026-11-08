@@ -102,27 +102,6 @@ function wireTabs(choices) {
 wireTabs(primaryTabs);
 wireTabs(viewTabs);
 
-function setPanelExpanded(toggleId, panelId, collapsedClass, expanded, label) {
-  const toggle = $(toggleId);
-  $(panelId).hidden = !expanded;
-  document.querySelector(".layout").classList.toggle(collapsedClass, !expanded);
-  toggle.setAttribute("aria-expanded", String(expanded));
-  const action = `${expanded ? "收合" : "展開"}${label}`;
-  toggle.setAttribute("aria-label", action);
-  toggle.title = action;
-  const leftPanel = panelId === "library-panel";
-  toggle.textContent = expanded === leftPanel ? "<" : ">";
-}
-
-for (const [toggleId, panelId, collapsedClass, label] of [
-  ["toggle-library", "library-panel", "library-collapsed", "元件庫"],
-  ["toggle-inspector", "inspector-panel", "inspector-collapsed", "右側欄"]
-]) {
-  $(toggleId).addEventListener("click", () => {
-    setPanelExpanded(toggleId, panelId, collapsedClass, $(toggleId).getAttribute("aria-expanded") !== "true", label);
-  });
-}
-
 function portPosition(endpoint) {
   const item = model.components.find(part => part.id === endpoint.id);
   if (!item) return null;
@@ -311,16 +290,50 @@ function loadSample() {
   render(); invalidate();
 }
 
+function variableQuantity(name) {
+  if (name === "time") return {quantity: "時間", unit: "s"};
+  const derivative = /^der\((.+)\)$/.exec(name);
+  const parts = (derivative ? derivative[1] : name).split(".");
+  const component = model.components.find(item => item.id === parts[0]);
+  if (!component) return null;
+  const field = parts.slice(1).join(".");
+  let quantity = null;
+  if (["v", "p.v", "n.v"].includes(field) && !(component.type === "ground" && field !== "p.v"))
+    quantity = {quantity: "電壓", unit: "V"};
+  else if (["i", "p.i", "n.i"].includes(field) && !(component.type === "ground" && field !== "p.i"))
+    quantity = {quantity: "電流", unit: "A"};
+  else if (field === "LossPower" && ["resistor", "capacitor"].includes(component.type))
+    quantity = {quantity: "損耗功率", unit: "W"};
+  else if (field === "R_actual" && component.type === "resistor")
+    quantity = {quantity: "電阻", unit: "Ω"};
+  if (!quantity || !derivative) return quantity;
+  return {quantity: `${quantity.quantity}變化率`, unit: `${quantity.unit}/s`};
+}
+
 function drawPlot(result) {
   const svg = $("plot");
   svg.replaceChildren();
   const times = result.points.map(p => p[0]), values = result.points.map(p => p[1]);
   const minT = Math.min(...times), maxT = Math.max(...times), minV = Math.min(...values), maxV = Math.max(...values);
-  const spanT = maxT - minT || 1, spanV = maxV - minV || 1;
-  for (let i = 1; i < 4; i++) {
+  const padding = minV === maxV ? Math.max(Math.abs(minV) * 0.05, 1) : 0;
+  const bottomV = minV - padding, topV = maxV + padding;
+  const spanT = maxT - minT || 1, spanV = topV - bottomV;
+  $("plot-y-ticks").replaceChildren();
+  const tickValues = Array.from({length: 5}, (_, i) => topV - i * spanV / 4);
+  let tickLabels;
+  for (let precision = 4; precision <= 17; precision++) {
+    tickLabels = tickValues.map(value => Number(value.toPrecision(precision)).toString());
+    if (new Set(tickLabels).size === tickValues.length) break;
+  }
+  for (let i = 0; i <= 4; i++) {
+    const y = 10 + i * 42.5;
+    const tick = document.createElement("span");
+    tick.style.top = `${y / 190 * 100}%`;
+    tick.textContent = tickLabels[i];
+    $("plot-y-ticks").append(tick);
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
     line.setAttribute("x1", "0"); line.setAttribute("x2", "600");
-    line.setAttribute("y1", String(i * 47.5)); line.setAttribute("y2", String(i * 47.5));
+    line.setAttribute("y1", String(y)); line.setAttribute("y2", String(y));
     line.setAttribute("stroke", "#eef1f6"); svg.append(line);
   }
   const visible = [];
@@ -336,16 +349,19 @@ function drawPlot(result) {
     }
   }
   const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-  line.setAttribute("points", visible.map(([t, v]) => `${(t - minT) / spanT * 590 + 5},${180 - (v - minV) / spanV * 170}`).join(" "));
+  line.setAttribute("points", visible.map(([t, v]) => `${(t - minT) / spanT * 590 + 5},${180 - (v - bottomV) / spanV * 170}`).join(" "));
   line.setAttribute("fill", "none"); line.setAttribute("stroke", "#607bf3"); line.setAttribute("stroke-width", "2.5"); line.setAttribute("vector-effect", "non-scaling-stroke"); svg.append(line);
   if (visible.length) {
     const [t, v] = visible.at(-1);
     const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     marker.setAttribute("cx", String((t - minT) / spanT * 590 + 5));
-    marker.setAttribute("cy", String(180 - (v - minV) / spanV * 170));
+    marker.setAttribute("cy", String(180 - (v - bottomV) / spanV * 170));
     marker.setAttribute("r", "3"); marker.setAttribute("fill", "#536eef"); svg.append(marker);
   }
   $("plot-label").textContent = `${result.variable}　 ${minV.toPrecision(4)} – ${maxV.toPrecision(4)}`;
+  const metadata = variableQuantity(result.variable);
+  $("plot-y-title").textContent = metadata ? `${metadata.quantity} (${metadata.unit})` : "物理量與單位未知";
+  svg.setAttribute("aria-label", `${result.variable}：${$("plot-y-title").textContent}，隨時間變化圖`);
   $("plot-range").replaceChildren();
   for (const text of [`${minT.toPrecision(3)} s`, `時間 (s)`, `${maxT.toPrecision(3)} s`]) {
     const span = document.createElement("span"); span.textContent = text; $("plot-range").append(span);
