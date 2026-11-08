@@ -76,7 +76,7 @@ const WireRouter = (() => {
         if (a.x !== b.x || a.y !== b.y) segments.push({a, b, wire, index: i - 1, net: nets[wire], horizontal: a.y === b.y});
       }
     });
-    const candidates = new Map(), bridges = new Map();
+    const candidates = new Map(), bridges = new Map(), crossings = [];
     let ambiguous = false;
     const contains = (segment, p) => segment.horizontal
       ? p.y === segment.a.y && p.x >= Math.min(segment.a.x, segment.b.x) && p.x <= Math.max(segment.a.x, segment.b.x)
@@ -97,21 +97,13 @@ const WireRouter = (() => {
         const h = a.horizontal ? a : b, v = a.horizontal ? b : a;
         const point = {x: v.a.x, y: h.a.y};
         if (!contains(h, point) || !contains(v, point)) continue;
-        if (a.net === b.net) candidate(a.net, point);
-        else {
-          const margin = 6;
-          if (point.x - Math.min(h.a.x, h.b.x) < margin || Math.max(h.a.x, h.b.x) - point.x < margin ||
-              point.y - Math.min(v.a.y, v.b.y) < margin || Math.max(v.a.y, v.b.y) - point.y < margin) {
-            ambiguous = true;
-          } else {
-            const id = `${h.wire}:${h.index}`;
-            if (!bridges.has(id)) bridges.set(id, []);
-            bridges.get(id).push(point.x);
-          }
-        }
+        const interiorH = point.x > Math.min(h.a.x, h.b.x) && point.x < Math.max(h.a.x, h.b.x);
+        const interiorV = point.y > Math.min(v.a.y, v.b.y) && point.y < Math.max(v.a.y, v.b.y);
+        if (a.net === b.net && !(interiorH && interiorV)) candidate(a.net, point);
+        else crossings.push({h, v, point});
       }
     }
-    const junctions = [];
+    const junctions = [], junctionKeys = new Set();
     for (const {net, point} of candidates.values()) {
       const directions = new Set();
       for (const segment of segments) {
@@ -124,7 +116,22 @@ const WireRouter = (() => {
           if (Math.max(segment.a.y, segment.b.y) > point.y) directions.add("down");
         }
       }
-      if (directions.size >= 3) junctions.push(point);
+      if (directions.size >= 3) {
+        junctions.push(point);
+        junctionKeys.add(`${net}|${point.x}|${point.y}`);
+      }
+    }
+    for (const {h, v, point} of crossings) {
+      if (h.net === v.net && junctionKeys.has(`${h.net}|${point.x}|${point.y}`)) continue;
+      const margin = 6;
+      if (point.x - Math.min(h.a.x, h.b.x) < margin || Math.max(h.a.x, h.b.x) - point.x < margin ||
+          point.y - Math.min(v.a.y, v.b.y) < margin || Math.max(v.a.y, v.b.y) - point.y < margin) {
+        ambiguous = true;
+      } else {
+        const id = `${h.wire}:${h.index}`;
+        if (!bridges.has(id)) bridges.set(id, []);
+        bridges.get(id).push(point.x);
+      }
     }
     for (const values of bridges.values()) {
       const sorted = [...new Set(values)].sort((a, b) => a - b);

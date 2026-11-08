@@ -43,6 +43,9 @@
 .wire { cursor: move; touch-action: none; }
 .wire.wire-drag-invalid { stroke: #d35c5c; }
 .wire-junction { fill: #7489df; pointer-events: none; }
+.wire-bridge-halo, .wire-bridge { fill: none; pointer-events: none; }
+.wire-bridge-halo { stroke: #fbfcff; stroke-width: 7; }
+.wire-bridge { stroke: #7489df; stroke-width: 2.5; }
 .wire-warning { padding: 8px 16px; border-top: 1px solid #f1dada; color: #a53e44; font-size: 11px; line-height: 1.5; }
 .view-tabs { display: flex; width: fit-content; gap: 3px; margin-top: 12px; padding: 4px; border-radius: 8px; background: #e9edf5; }
 .view-tab { padding: 8px 13px; border-radius: 6px; font-size: 12px; }

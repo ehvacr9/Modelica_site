@@ -50,6 +50,38 @@ document.getElementById("app").addEventListener("load", async event => {
     routes[2] = [{x: 20, y: 0}, {x: 80, y: 0}];
     assert(WireRouter.crossings(wires, routes).ambiguous, "不同網路重疊應顯示警告");
   });
+  test("sample ground wire crosses its own net without an extra junction", () => {
+    const components = [
+      {id: "voltage1", x: 25, y: 110}, {id: "resistor1", x: 240, y: 45},
+      {id: "capacitor1", x: 480, y: 150}, {id: "ground1", x: 240, y: 270}
+    ];
+    const wires = [
+      {from: {id: "voltage1", port: "p"}, to: {id: "resistor1", port: "p"}},
+      {from: {id: "resistor1", port: "n"}, to: {id: "capacitor1", port: "p"}},
+      {from: {id: "capacitor1", port: "n"}, to: {id: "voltage1", port: "n"}},
+      {from: {id: "ground1", port: "p"}, to: {id: "voltage1", port: "n"}}
+    ];
+    const router = WireRouter.create(components, wires);
+    const routes = wires.map((wire, i) => router.route(i));
+    const geometry = WireRouter.crossings(wires, routes);
+    assert(geometry.junctions.length === 1 && geometry.junctions[0].x === 85 && geometry.junctions[0].y === 194,
+      "應只保留真正的三點接點");
+    assert(geometry.bridges.get("2:1").includes(300), "同一網路在別處連接時，穿越處仍應跨線");
+    assert(!geometry.ambiguous, "範例跨線不應產生警告");
+  });
+  test("same-net straight crossing remains a bridge but branch junction takes precedence", () => {
+    const e = id => ({id, port: "p"});
+    const wires = [{from: e("a"), to: e("b")}, {from: e("a"), to: e("c")}];
+    const routes = [[{x: 0, y: 0}, {x: 100, y: 0}],
+      [{x: 50, y: -50}, {x: 50, y: 50}]];
+    let geometry = WireRouter.crossings(wires, routes);
+    assert(geometry.junctions.length === 0 && geometry.bridges.get("0:0").includes(50), "直線交叉不應顯示接點");
+    wires.push({from: e("a"), to: e("d")});
+    routes.push([{x: 50, y: 0}, {x: 80, y: 0}]);
+    geometry = WireRouter.crossings(wires, routes);
+    assert(geometry.junctions.some(point => point.x === 50 && point.y === 0), "實際分支應顯示接點");
+    assert(!geometry.bridges.has("0:0"), "同一接點不應同時繪製跨線");
+  });
   test("voltage polarity stays upright and ground has one terminal at every rotation", () => {
     const expectedPolarity = [
       "M 56 27 h 8 M 60 23 v 8 M 56 45 h 8",

@@ -283,6 +283,20 @@ function drawWires() {
     });
     svg.append(path);
   }
+  for (const [id, positions] of geometry.bridges) {
+    const [wireIndex, segmentIndex] = id.split(":").map(Number);
+    const route = routes[wireIndex], a = route[segmentIndex], b = route[segmentIndex + 1];
+    const direction = Math.sign(b.x - a.x);
+    for (const x of new Set(positions)) {
+      const data = `M ${x - direction * 5} ${a.y} Q ${x} ${a.y - 10} ${x + direction * 5} ${a.y}`;
+      for (const className of ["wire-bridge-halo", "wire-bridge"]) {
+        const bridge = document.createElementNS(ns, "path");
+        bridge.setAttribute("d", data);
+        bridge.setAttribute("class", className);
+        svg.append(bridge);
+      }
+    }
+  }
   for (const point of geometry.junctions) {
     const dot = document.createElementNS(ns, "circle");
     dot.setAttribute("cx", point.x); dot.setAttribute("cy", point.y); dot.setAttribute("r", "4");
@@ -292,7 +306,7 @@ function drawWires() {
   const warnings = [];
   if (failed.length) warnings.push(`無法繞開鄰近或重疊元件的連線：${failed.join("、")}。請移開元件。`);
   if (adjusted.length) warnings.push(`手動線路受元件位置影響，暫以自動繞線顯示：${adjusted.join("、")}。`);
-  if (geometry.ambiguous) warnings.push("不同電氣網路的線段重疊或交叉位置過近，請拖曳線段分開，以免誤認為連接。");
+  if (geometry.ambiguous) warnings.push("不同電氣網路的線段重疊，或跨線位置太靠近線段端點，請拖曳線段分開，以免誤認為連接。");
   $("wire-warning").hidden = !warnings.length;
   $("wire-warning").textContent = warnings.join(" ");
 }
