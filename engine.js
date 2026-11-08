@@ -89,6 +89,9 @@ const CircuitEngine = (() => {
         columns[i].push(number);
       });
     }
+    const times = columns[timeIndex];
+    if (times.some((time, index) => index > 0 && time < times[index - 1]))
+      throw new Error("模擬結果的時間順序無效。");
     return {names: headers, columns, timeIndex};
   }
 

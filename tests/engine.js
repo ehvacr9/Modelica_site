@@ -19,6 +19,11 @@ test("rejects malformed or missing values", () => {
 test("validates connections", () => {
   fails(() => CircuitEngine.generate({components: [{id:"g", type:"ground"}], wires: [], stopTime:1}, true));
 });
+test("accepts event timestamps but rejects decreasing time", () => {
+  const result = CircuitEngine.parseCsv(csv('"time","x"\n0,1\n0.5,2\n0.5,3\n1,4\n'));
+  assert(result.columns[1][2] === 3, "事件點資料錯誤");
+  fails(() => CircuitEngine.parseCsv(csv('"time","x"\n0,1\n1,2\n0.5,3\n')));
+});
 
 const output = document.getElementById("results");
 let failures = 0;

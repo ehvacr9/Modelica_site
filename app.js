@@ -14,6 +14,10 @@ let revision = 0;
 let codeTimer;
 let noticeTimer;
 let simulationResult = null;
+let selectedVariable = null;
+let replayTime = 0;
+let replayFrame = null;
+let replayLastFrame = null;
 
 function notify(text, error = false) {
   const box = $("message");
@@ -51,7 +55,11 @@ function invalidate() {
 }
 
 function clearResults() {
+  pauseReplay();
   simulationResult = null;
+  selectedVariable = null;
+  replayTime = 0;
+  updateReplayControls();
   $("plot-empty").hidden = false;
   $("plot-area").hidden = true;
   $("plot").replaceChildren();
@@ -67,6 +75,10 @@ function activateTab(tabId, choices) {
     $(id).setAttribute("aria-selected", String(active));
     $(id).tabIndex = active ? 0 : -1;
     $(panel).hidden = !active;
+  }
+  if (choices === primaryTabs) {
+    $("model-settings").hidden = tabId === "tab-plotting";
+    if (tabId !== "tab-plotting") pauseReplay();
   }
 }
 
@@ -310,9 +322,28 @@ function drawPlot(result) {
     line.setAttribute("y1", String(i * 47.5)); line.setAttribute("y2", String(i * 47.5));
     line.setAttribute("stroke", "#eef1f6"); svg.append(line);
   }
+  const visible = [];
+  for (const point of result.points) {
+    if (point[0] <= replayTime) visible.push(point);
+    else {
+      const previous = visible.at(-1);
+      if (previous && point[0] > previous[0]) {
+        const ratio = (replayTime - previous[0]) / (point[0] - previous[0]);
+        visible.push([replayTime, previous[1] + ratio * (point[1] - previous[1])]);
+      }
+      break;
+    }
+  }
   const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-  line.setAttribute("points", result.points.map(([t, v]) => `${(t - minT) / spanT * 590 + 5},${180 - (v - minV) / spanV * 170}`).join(" "));
+  line.setAttribute("points", visible.map(([t, v]) => `${(t - minT) / spanT * 590 + 5},${180 - (v - minV) / spanV * 170}`).join(" "));
   line.setAttribute("fill", "none"); line.setAttribute("stroke", "#607bf3"); line.setAttribute("stroke-width", "2.5"); line.setAttribute("vector-effect", "non-scaling-stroke"); svg.append(line);
+  if (visible.length) {
+    const [t, v] = visible.at(-1);
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    marker.setAttribute("cx", String((t - minT) / spanT * 590 + 5));
+    marker.setAttribute("cy", String(180 - (v - minV) / spanV * 170));
+    marker.setAttribute("r", "3"); marker.setAttribute("fill", "#536eef"); svg.append(marker);
+  }
   $("plot-label").textContent = `${result.variable}　 ${minV.toPrecision(4)} – ${maxV.toPrecision(4)}`;
   $("plot-range").replaceChildren();
   for (const text of [`${minT.toPrecision(3)} s`, `時間 (s)`, `${maxT.toPrecision(3)} s`]) {
@@ -323,18 +354,87 @@ function drawPlot(result) {
 
 function showVariable(index, openPlotting = true) {
   if (!simulationResult) return;
-  const times = simulationResult.columns[simulationResult.timeIndex];
-  const values = simulationResult.columns[index];
+  selectedVariable = index;
   document.querySelectorAll(".workspace-variable").forEach(button => {
     button.classList.toggle("active", Number(button.dataset.index) === index);
     button.setAttribute("aria-pressed", String(Number(button.dataset.index) === index));
   });
-  drawPlot({variable: simulationResult.names[index], points: times.map((time, i) => [time, values[i]])});
+  drawSelectedVariable();
   if (openPlotting) activateTab("tab-plotting", primaryTabs);
 }
 
+function drawSelectedVariable() {
+  const times = simulationResult.columns[simulationResult.timeIndex];
+  const values = simulationResult.columns[selectedVariable];
+  drawPlot({variable: simulationResult.names[selectedVariable], points: times.map((time, i) => [time, values[i]])});
+}
+
+function updateReplayControls() {
+  const available = !!simulationResult;
+  $("replay-play").disabled = !available || replayFrame !== null;
+  $("replay-pause").disabled = !available || replayFrame === null;
+  $("replay-speed").disabled = !available;
+  $("replay-progress").disabled = !available;
+  if (!available) {
+    $("replay-progress").value = "0";
+    $("replay-time").textContent = "尚無資料";
+    return;
+  }
+  const times = simulationResult.columns[simulationResult.timeIndex];
+  const first = times[0], last = times.at(-1), span = last - first;
+  $("replay-progress").value = String(span ? Math.round((replayTime - first) / span * 10000) : 0);
+  $("replay-time").textContent = `${Number(replayTime.toPrecision(6))} / ${Number(last.toPrecision(6))} 秒`;
+}
+
+function pauseReplay() {
+  if (replayFrame !== null) cancelAnimationFrame(replayFrame);
+  replayFrame = null;
+  replayLastFrame = null;
+  updateReplayControls();
+}
+
+function redrawReplay() {
+  updateReplayControls();
+  if (simulationResult && selectedVariable !== null) drawSelectedVariable();
+}
+
+$("replay-play").addEventListener("click", () => {
+  if (!simulationResult || replayFrame !== null) return;
+  const times = simulationResult.columns[simulationResult.timeIndex];
+  const first = times[0], last = times.at(-1);
+  if (replayTime >= last) replayTime = first;
+  replayLastFrame = null;
+  const tick = timestamp => {
+    if (replayLastFrame !== null) {
+      replayTime = Math.min(last, replayTime + (timestamp - replayLastFrame) / 1000 * Number($("replay-speed").value));
+    }
+    replayLastFrame = timestamp;
+    if (replayTime >= last) {
+      replayFrame = null;
+      replayLastFrame = null;
+      redrawReplay();
+      return;
+    }
+    replayFrame = requestAnimationFrame(tick);
+    redrawReplay();
+  };
+  replayFrame = requestAnimationFrame(tick);
+  redrawReplay();
+});
+$("replay-pause").addEventListener("click", pauseReplay);
+$("replay-progress").addEventListener("input", event => {
+  if (!simulationResult) return;
+  const times = simulationResult.columns[simulationResult.timeIndex];
+  replayTime = times[0] + (times.at(-1) - times[0]) * Number(event.target.value) / 10000;
+  replayLastFrame = null;
+  redrawReplay();
+});
+$("replay-speed").addEventListener("change", () => { replayLastFrame = null; });
+
 function showResults(result) {
   simulationResult = result;
+  replayTime = result.columns[result.timeIndex].at(-1);
+  updateReplayControls();
   const body = $("workspace-variables");
   body.replaceChildren();
   result.names.forEach((name, index) => {

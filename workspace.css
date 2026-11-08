@@ -38,6 +38,11 @@
 .plotting-panel #plot-area { padding-top: 30px; }
 .plotting-panel #plot { height: 310px; }
 .plotting-panel #plot-label { font-size: 12px; font-weight: 600; }
+.replay-controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-top: 20px; color: #66778d; font-size: 12px; }
+.replay-controls select { border: 1px solid #e2e8f0; border-radius: 6px; padding: 7px; color: #526174; background: white; }
+.replay-controls input { flex: 1 1 120px; min-width: 90px; accent-color: #536eef; }
+.replay-controls output { min-width: 110px; color: #526174; font-variant-numeric: tabular-nums; }
+.replay-hint { margin-top: 9px; color: #8d9aac; font-size: 11px; }
 @media(max-width: 1100px) and (min-width: 701px) {
   .layout { grid-template-columns: 190px minmax(0, 1fr) 210px; }
   .layout.library-collapsed { grid-template-columns: 0 minmax(0, 1fr) 210px; }
