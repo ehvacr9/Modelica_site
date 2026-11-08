@@ -4,7 +4,7 @@ const WireRouter = (() => {
   const clearance = 12;
 
   function port(part, name) {
-    const directions = [[-1, 0], [0, -1], [1, 0], [0, 1]];
+    const directions = [[0, -1], [1, 0], [0, 1], [-1, 0]];
     const rotation = part.rotation === undefined ? 0 : part.rotation;
     const direction = directions[(rotation / 90 + (name === "n" ? 2 : 0)) % 4];
     return {x: part.x + 60 + direction[0] * 60, y: part.y + 36 + direction[1] * 36,
@@ -31,6 +31,106 @@ const WireRouter = (() => {
       result.push(point);
     }
     return result;
+  }
+
+  function shiftSegment(points, index, offset) {
+    const start = points[index], end = points[index + 1];
+    if (!start || !end || (start.x !== end.x && start.y !== end.y)) return null;
+    const horizontal = start.y === end.y;
+    const length = horizontal ? Math.abs(end.x - start.x) : Math.abs(end.y - start.y);
+    const needed = (index === 0 ? clearance : 0) + (index + 1 === points.length - 1 ? clearance : 0);
+    if (length <= needed) return null;
+    const sign = horizontal ? Math.sign(end.x - start.x) : Math.sign(end.y - start.y);
+    const a = {...start}, b = {...end};
+    if (index === 0) {
+      if (horizontal) a.x += sign * clearance;
+      else a.y += sign * clearance;
+    }
+    if (index + 1 === points.length - 1) {
+      if (horizontal) b.x -= sign * clearance;
+      else b.y -= sign * clearance;
+    }
+    const movedA = {...a}, movedB = {...b};
+    if (horizontal) { movedA.y += offset; movedB.y += offset; }
+    else { movedA.x += offset; movedB.x += offset; }
+    const before = index === 0 ? [start, a] : points.slice(0, index);
+    const after = index + 1 === points.length - 1 ? [b, end] : points.slice(index + 2);
+    return simplify([...before, movedA, movedB, ...after]);
+  }
+
+  function crossings(wires, routes) {
+    const parents = new Map();
+    const key = end => `${end.id}.${end.port}`;
+    function find(name) {
+      if (!parents.has(name)) parents.set(name, name);
+      if (parents.get(name) !== name) parents.set(name, find(parents.get(name)));
+      return parents.get(name);
+    }
+    for (const wire of wires) parents.set(find(key(wire.from)), find(key(wire.to)));
+    const nets = wires.map(wire => find(key(wire.from)));
+    const segments = [];
+    routes.forEach((route, wire) => {
+      if (!route) return;
+      for (let i = 1; i < route.length; i++) {
+        const a = route[i - 1], b = route[i];
+        if (a.x !== b.x || a.y !== b.y) segments.push({a, b, wire, index: i - 1, net: nets[wire], horizontal: a.y === b.y});
+      }
+    });
+    const candidates = new Map(), bridges = new Map();
+    let ambiguous = false;
+    const contains = (segment, p) => segment.horizontal
+      ? p.y === segment.a.y && p.x >= Math.min(segment.a.x, segment.b.x) && p.x <= Math.max(segment.a.x, segment.b.x)
+      : p.x === segment.a.x && p.y >= Math.min(segment.a.y, segment.b.y) && p.y <= Math.max(segment.a.y, segment.b.y);
+    function candidate(net, point) { candidates.set(`${net}|${point.x}|${point.y}`, {net, point}); }
+    for (let i = 0; i < segments.length; i++) for (let j = i + 1; j < segments.length; j++) {
+      const a = segments[i], b = segments[j];
+      if (a.wire === b.wire) continue;
+      if (a.horizontal === b.horizontal) {
+        if ((a.horizontal ? a.a.y !== b.a.y : a.a.x !== b.a.x)) continue;
+        const axis = a.horizontal ? "x" : "y";
+        const low = Math.max(Math.min(a.a[axis], a.b[axis]), Math.min(b.a[axis], b.b[axis]));
+        const high = Math.min(Math.max(a.a[axis], a.b[axis]), Math.max(b.a[axis], b.b[axis]));
+        if (low > high) continue;
+        if (a.net !== b.net) { ambiguous = true; continue; }
+        for (const value of [low, high]) candidate(a.net, a.horizontal ? {x: value, y: a.a.y} : {x: a.a.x, y: value});
+      } else {
+        const h = a.horizontal ? a : b, v = a.horizontal ? b : a;
+        const point = {x: v.a.x, y: h.a.y};
+        if (!contains(h, point) || !contains(v, point)) continue;
+        if (a.net === b.net) candidate(a.net, point);
+        else {
+          const margin = 6;
+          if (point.x - Math.min(h.a.x, h.b.x) < margin || Math.max(h.a.x, h.b.x) - point.x < margin ||
+              point.y - Math.min(v.a.y, v.b.y) < margin || Math.max(v.a.y, v.b.y) - point.y < margin) {
+            ambiguous = true;
+          } else {
+            const id = `${h.wire}:${h.index}`;
+            if (!bridges.has(id)) bridges.set(id, []);
+            bridges.get(id).push(point.x);
+          }
+        }
+      }
+    }
+    const junctions = [];
+    for (const {net, point} of candidates.values()) {
+      const directions = new Set();
+      for (const segment of segments) {
+        if (segment.net !== net || !contains(segment, point)) continue;
+        if (segment.horizontal) {
+          if (Math.min(segment.a.x, segment.b.x) < point.x) directions.add("left");
+          if (Math.max(segment.a.x, segment.b.x) > point.x) directions.add("right");
+        } else {
+          if (Math.min(segment.a.y, segment.b.y) < point.y) directions.add("up");
+          if (Math.max(segment.a.y, segment.b.y) > point.y) directions.add("down");
+        }
+      }
+      if (directions.size >= 3) junctions.push(point);
+    }
+    for (const values of bridges.values()) {
+      const sorted = [...new Set(values)].sort((a, b) => a - b);
+      if (sorted.some((value, i) => i > 0 && value - sorted[i - 1] < 12)) ambiguous = true;
+    }
+    return {junctions, bridges, ambiguous};
   }
 
   function create(components, wires) {
@@ -151,7 +251,29 @@ const WireRouter = (() => {
       const path = search(a.stub, b.stub);
       return path ? simplify([a.point, ...path, b.point]) : null;
     }
-    return {route};
+    function validManual(index, points) {
+      const [a, b] = endpoints[index];
+      if (!a || !b || !Array.isArray(points) || points.length < 2 || points.length > 200) return false;
+      if (points.some(p => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y) ||
+          Math.abs(p.x) > 1000000 || Math.abs(p.y) > 1000000)) return false;
+      if (points[0].x !== a.point.x || points[0].y !== a.point.y ||
+          points.at(-1).x !== b.point.x || points.at(-1).y !== b.point.y) return false;
+      const outward = (point, end) => (point.x - end.point.x) * (end.stub.x - end.point.x) +
+        (point.y - end.point.y) * (end.stub.y - end.point.y);
+      if (outward(points[1], a) < clearance * clearance ||
+          outward(points.at(-2), b) < clearance * clearance) return false;
+      return points.slice(1).every((point, i) => {
+        const previous = points[i];
+        if ((point.x !== previous.x && point.y !== previous.y) ||
+            (point.x === previous.x && point.y === previous.y)) return false;
+        return obstacles.every(box => {
+          if (i === 0 && box.id === a.id) return !intersects(a.stub, point, box);
+          if (i === points.length - 2 && box.id === b.id) return !intersects(previous, b.stub, box);
+          return !intersects(previous, point, box);
+        });
+      });
+    }
+    return {route, validManual};
   }
-  return {create, port};
+  return {create, port, shiftSegment, crossings};
 })();

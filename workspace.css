@@ -38,8 +38,11 @@
 .node-label strong, .node-label small { display: block; color: #526174; }
 .node .port { transform: translate(-50%, -50%); right: auto; }
 .component-icon .symbol { width: 30px; height: 25px; stroke: #5a71df; }
-.properties-form select { width: 100%; border: 1px solid #e3e8f1; border-radius: 6px; padding: 9px; color: #344357; background: #fff; }
+.rotation-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .wire.wire-unrouted { stroke: #d35c5c; stroke-dasharray: 6 4; }
+.wire { cursor: move; touch-action: none; }
+.wire.wire-drag-invalid { stroke: #d35c5c; }
+.wire-junction { fill: #7489df; pointer-events: none; }
 .wire-warning { padding: 8px 16px; border-top: 1px solid #f1dada; color: #a53e44; font-size: 11px; line-height: 1.5; }
 .view-tabs { display: flex; width: fit-content; gap: 3px; margin-top: 12px; padding: 4px; border-radius: 8px; background: #e9edf5; }
 .view-tab { padding: 8px 13px; border-radius: 6px; font-size: 12px; }

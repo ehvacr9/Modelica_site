@@ -7,7 +7,7 @@ const definitions = {
   ground: {name: "接地"}
 };
 const $ = id => document.getElementById(id);
-let model = {components: [], wires: [], stopTime: 1};
+let model = {diagramVersion: 2, components: [], wires: [], stopTime: 1};
 let selected = null;
 let pending = null;
 let revision = 0;
@@ -131,10 +131,13 @@ function fitView() {
   if (!model.components.length) {
     view.x = 0; view.y = 0; view.scale = 1;
   } else {
-    const minX = Math.min(...model.components.map(item => item.x));
-    const minY = Math.min(...model.components.map(item => item.y));
-    const maxX = Math.max(...model.components.map(item => item.x + 120));
-    const maxY = Math.max(...model.components.map(item => item.y + 72));
+    const router = WireRouter.create(model.components, model.wires);
+    const routePoints = model.wires.flatMap((wire, index) =>
+      (wire.route && router.validManual(index, wire.route) ? wire.route : router.route(index)) || []);
+    const minX = Math.min(...model.components.map(item => item.x), ...routePoints.map(point => point.x));
+    const minY = Math.min(...model.components.map(item => item.y), ...routePoints.map(point => point.y));
+    const maxX = Math.max(...model.components.map(item => item.x + 120), ...routePoints.map(point => point.x));
+    const maxY = Math.max(...model.components.map(item => item.y + 72), ...routePoints.map(point => point.y));
     const margin = 30;
     view.scale = Math.min(2, Math.max(0.00001, (canvas.clientWidth - 2 * margin) / (maxX - minX)),
       Math.max(0.00001, (canvas.clientHeight - 2 * margin) / (maxY - minY)));
@@ -151,13 +154,14 @@ function portPosition(endpoint) {
 }
 
 function symbol(type, rotation = 0) {
+  const symbolRotation = (rotation + 90) % 360;
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", "0 0 120 72");
   svg.setAttribute("aria-hidden", "true");
   svg.classList.add("symbol");
   const group = document.createElementNS(ns, "g");
-  group.setAttribute("transform", `translate(60 36) rotate(${rotation})`);
+  group.setAttribute("transform", `translate(60 36) rotate(${symbolRotation})`);
   const shapes = {
     resistor: ["M -36 0 H -27 L -23 -9 L -15 9 L -7 -9 L 1 9 L 9 -9 L 17 9 L 23 -9 L 27 0 H 36"],
     capacitor: ["M -36 0 H -7 M -7 -17 V 17 M 7 -17 V 17 M 7 0 H 36"],
@@ -172,17 +176,17 @@ function symbol(type, rotation = 0) {
   svg.append(group);
   if (type === "voltage") {
     const offsets = [[-9, 0], [0, -9], [9, 0], [0, 9]];
-    const [dx, dy] = offsets[rotation / 90];
+    const [dx, dy] = offsets[symbolRotation / 90];
     const plusX = 60 + dx, plusY = 36 + dy, minusX = 60 - dx, minusY = 36 - dy;
     const polarity = document.createElementNS(ns, "path");
     polarity.setAttribute("d", `M ${plusX - 4} ${plusY} h 8 M ${plusX} ${plusY - 4} v 8 M ${minusX - 4} ${minusY} h 8`);
     svg.append(polarity);
   }
-  if (rotation % 180 === 0) {
+  if (symbolRotation % 180 === 0) {
     const leads = document.createElementNS(ns, "path");
     let data = "M 0 36 H 24";
     if (type !== "ground") data += " M 96 36 H 120";
-    if (rotation === 180 && type === "ground") data = "M 96 36 H 120";
+    if (symbolRotation === 180 && type === "ground") data = "M 96 36 H 120";
     leads.setAttribute("d", data);
     svg.append(leads);
   }
@@ -193,21 +197,85 @@ function drawWires() {
   const svg = $("wires");
   svg.replaceChildren();
   const router = WireRouter.create(model.components, model.wires);
-  const failed = [];
+  const failed = [], adjusted = [];
+  const routes = model.wires.map((wire, index) => {
+    if (wire.route && router.validManual(index, wire.route)) return wire.route;
+    if (wire.route) adjusted.push(`${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}`);
+    return router.route(index);
+  });
+  const geometry = WireRouter.crossings(model.wires, routes);
+  const ns = "http://www.w3.org/2000/svg";
+  function pathData(route, index) {
+    let data = `M ${route[0].x} ${route[0].y}`;
+    for (let i = 1; i < route.length; i++) {
+      const a = route[i - 1], b = route[i];
+      const direction = Math.sign(b.x - a.x);
+      const jumps = [...new Set(geometry.bridges.get(`${index}:${i - 1}`) || [])]
+        .sort((x, y) => direction * (x - y));
+      for (const x of jumps) {
+        data += ` L ${x - direction * 5} ${a.y} Q ${x} ${a.y - 10} ${x + direction * 5} ${a.y}`;
+      }
+      data += ` L ${b.x} ${b.y}`;
+    }
+    return data;
+  }
   for (const [index, wire] of model.wires.entries()) {
     const a = portPosition(wire.from), b = portPosition(wire.to);
     if (!a || !b) continue;
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const points = router.route(index);
+    const path = document.createElementNS(ns, "path");
+    const points = routes[index];
     if (!points) failed.push(`${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}`);
     const route = points || [a, {x: (a.x + b.x) / 2, y: a.y}, {x: (a.x + b.x) / 2, y: b.y}, b];
-    path.setAttribute("d", route.map((point, i) => `${i ? "L" : "M"} ${point.x} ${point.y}`).join(" "));
+    path.setAttribute("d", pathData(route, index));
     path.setAttribute("class", points ? "wire" : "wire wire-unrouted");
-    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = "點擊後確認是否刪除連線";
+    const title = document.createElementNS(ns, "title");
+    title.textContent = "拖曳線段調整位置；點擊後確認是否刪除連線";
     path.append(title);
+    let dragged = false;
+    if (points) path.addEventListener("pointerdown", event => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+      const start = canvasPoint(event.clientX, event.clientY);
+      let segment = 0, distance = Infinity;
+      for (let i = 0; i < points.length - 1; i++) {
+        const p = points[i], q = points[i + 1];
+        const x = Math.max(Math.min(p.x, q.x), Math.min(Math.max(p.x, q.x), start.x));
+        const y = Math.max(Math.min(p.y, q.y), Math.min(Math.max(p.y, q.y), start.y));
+        const d = Math.hypot(start.x - x, start.y - y);
+        if (d < distance) { distance = d; segment = i; }
+      }
+      const horizontal = points[segment].y === points[segment + 1].y;
+      let candidate = null;
+      dragged = false;
+      path.setPointerCapture(event.pointerId);
+      function move(e) {
+        if (e.pointerId !== event.pointerId) return;
+        const delta = horizontal ? (e.clientY - event.clientY) / view.scale : (e.clientX - event.clientX) / view.scale;
+        if (Math.abs(delta * view.scale) <= 3 && !dragged) return;
+        dragged = true;
+        candidate = WireRouter.shiftSegment(points, segment, delta);
+        const valid = candidate && router.validManual(index, candidate);
+        path.classList.toggle("wire-drag-invalid", !valid);
+        if (valid) path.setAttribute("d", candidate.map((point, i) => `${i ? "L" : "M"} ${point.x} ${point.y}`).join(" "));
+      }
+      function end(e) {
+        if (e.pointerId !== event.pointerId) return;
+        path.removeEventListener("pointermove", move);
+        path.removeEventListener("pointerup", end);
+        path.removeEventListener("pointercancel", end);
+        if (dragged) {
+          if (e.type !== "pointercancel" && candidate && router.validManual(index, candidate)) wire.route = candidate;
+          else if (e.type !== "pointercancel") notify("無法在此位置放置線段，請避開元件並保留端點連接。", true);
+          drawWires();
+        }
+      }
+      path.addEventListener("pointermove", move);
+      path.addEventListener("pointerup", end);
+      path.addEventListener("pointercancel", end);
+    });
     path.addEventListener("click", event => {
       event.stopPropagation();
+      if (dragged) { dragged = false; return; }
       if (!confirm(`確定刪除連線 ${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}？`)) return;
       model.wires.splice(index, 1);
       render();
@@ -215,8 +283,18 @@ function drawWires() {
     });
     svg.append(path);
   }
-  $("wire-warning").hidden = !failed.length;
-  $("wire-warning").textContent = failed.length ? `無法繞開鄰近或重疊元件的連線：${failed.join("、")}。請移開元件。` : "";
+  for (const point of geometry.junctions) {
+    const dot = document.createElementNS(ns, "circle");
+    dot.setAttribute("cx", point.x); dot.setAttribute("cy", point.y); dot.setAttribute("r", "4");
+    dot.setAttribute("class", "wire-junction");
+    svg.append(dot);
+  }
+  const warnings = [];
+  if (failed.length) warnings.push(`無法繞開鄰近或重疊元件的連線：${failed.join("、")}。請移開元件。`);
+  if (adjusted.length) warnings.push(`手動線路受元件位置影響，暫以自動繞線顯示：${adjusted.join("、")}。`);
+  if (geometry.ambiguous) warnings.push("不同電氣網路的線段重疊或交叉位置過近，請拖曳線段分開，以免誤認為連接。");
+  $("wire-warning").hidden = !warnings.length;
+  $("wire-warning").textContent = warnings.join(" ");
 }
 
 function connect(endpoint) {
@@ -323,20 +401,21 @@ function renderProperties() {
   const kind = document.createElement("div"); kind.className = "detail"; kind.textContent = def.name;
   container.append(label, detail, kindLabel, kind);
   const rotationLabel = document.createElement("label");
-  rotationLabel.textContent = "方向（順時針）";
-  const rotation = document.createElement("select");
-  rotation.setAttribute("aria-label", "元件方向");
-  for (const angle of [0, 90, 180, 270]) {
-    const option = document.createElement("option");
-    option.value = String(angle); option.textContent = `${angle}°`;
-    rotation.append(option);
+  rotationLabel.textContent = "旋轉方向";
+  const rotationControls = document.createElement("div");
+  rotationControls.className = "rotation-controls";
+  for (const [label, delta] of [["↶ 向左 90°", -90], ["↷ 向右 90°", 90]]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button subtle";
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      item.rotation = ((item.rotation || 0) + delta + 360) % 360;
+      render();
+    });
+    rotationControls.append(button);
   }
-  rotation.value = String(item.rotation || 0);
-  rotation.addEventListener("change", () => {
-    item.rotation = Number(rotation.value);
-    render();
-  });
-  container.append(rotationLabel, rotation);
+  container.append(rotationLabel, rotationControls);
   if (def.parameter) {
     const valueLabel = document.createElement("label"); valueLabel.textContent = `${def.parameter} (${def.unit})`;
     const input = document.createElement("input"); input.type = "number"; input.step = "any"; input.value = item.value;
@@ -384,6 +463,7 @@ function loadSample() {
   const right = Math.max(160, Math.min(width - 135, 480));
   const middle = Math.max(140, Math.round(right / 2));
   model = {
+    diagramVersion: 2,
     components: [
       {id: "voltage1", type: "voltage", value: 5, x: 25, y: 110},
       {id: "resistor1", type: "resistor", value: 1000, x: middle, y: 45},
@@ -721,6 +801,19 @@ $("load").addEventListener("change", async event => {
     }
     if (candidate.components.some(item => item.rotation !== undefined && ![0, 90, 180, 270].includes(item.rotation)))
       throw new Error("元件方向必須為 0、90、180 或 270 度。");
+    if (candidate.wires.some(wire => wire.route !== undefined &&
+        (!Array.isArray(wire.route) || wire.route.length < 2 || wire.route.length > 200 ||
+         wire.route.some((point, index) => !point || !Number.isFinite(point.x) || !Number.isFinite(point.y) ||
+           Math.abs(point.x) > positionLimit || Math.abs(point.y) > positionLimit ||
+           (index > 0 && ((point.x !== wire.route[index - 1].x && point.y !== wire.route[index - 1].y) ||
+            (point.x === wire.route[index - 1].x && point.y === wire.route[index - 1].y)))))))
+      throw new Error("手動線路格式或座標無效。");
+    if (candidate.diagramVersion !== undefined && candidate.diagramVersion !== 2)
+      throw new Error("不支援的圖形模型版本。");
+    if (candidate.diagramVersion === undefined) {
+      for (const part of candidate.components) part.rotation = ((part.rotation || 0) + 270) % 360;
+      candidate.diagramVersion = 2;
+    }
     model = candidate; selected = null; pending = null; $("wire-hint").textContent = "就緒"; $("stop-time").value = model.stopTime;
     activateTab("tab-modeling", primaryTabs); activateTab("tab-model-view", viewTabs);
     render(); fitView(); invalidate(); notify("模型已匯入。");
