@@ -94,7 +94,11 @@ function setPanelExpanded(toggleId, panelId, collapsedClass, expanded, label) {
   $(panelId).hidden = !expanded;
   document.querySelector(".layout").classList.toggle(collapsedClass, !expanded);
   toggle.setAttribute("aria-expanded", String(expanded));
-  toggle.textContent = `${expanded ? "收合" : "展開"}${label}`;
+  const action = `${expanded ? "收合" : "展開"}${label}`;
+  toggle.setAttribute("aria-label", action);
+  toggle.title = action;
+  const leftPanel = panelId === "library-panel";
+  toggle.textContent = expanded === leftPanel ? "<" : ">";
 }
 
 for (const [toggleId, panelId, collapsedClass, label] of [

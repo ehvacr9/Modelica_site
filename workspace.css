@@ -10,7 +10,7 @@
 .inspector { display: flex; flex-direction: column; min-width: 0; }
 .inspector .simulation-settings { flex-shrink: 0; }
 .panel-controls { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 15px; }
-.panel-controls .button { font-size: 11px; }
+.panel-controls .panel-toggle { width: 34px; padding: 6px; font-size: 16px; }
 .workspace-panel { border-top: 1px solid #edf0f5; margin-top: 24px; padding-top: 18px; min-height: 220px; }
 .workspace-title { display: flex; align-items: center; justify-content: space-between; }
 .workspace-table-wrap { max-height: 300px; overflow: auto; margin-top: 12px; border: 1px solid #edf0f5; border-radius: 7px; }
