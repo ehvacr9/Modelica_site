@@ -9,6 +9,13 @@ document.getElementById("app").addEventListener("load", async event => {
   const test = (name, fn) => tests.push([name, fn]);
   const near = (a, b) => Math.abs(a - b) < 0.001;
 
+  test("sample layout has a single ground junction and no routing warnings", () => {
+    assert($("wire-warning").hidden, "範例不應有繞線警告");
+    const dots = [...$("wires").querySelectorAll(".wire-junction")];
+    assert(dots.length === 1 && dots[0].getAttribute("cx") === "300" && dots[0].getAttribute("cy") === "240",
+      "接地線應接至回路下方的單一接點");
+    assert(!$("wires").querySelector(".wire-bridge"), "範例線路不應相互跨越");
+  });
   test("rotation updates both terminals and obstacle-avoiding routes", () => {
     const components = [{id: "a", x: 0, y: 0}, {id: "b", x: 500, y: 200}];
     const wires = [{from: {id: "a", port: "n"}, to: {id: "b", port: "p"}}];
@@ -49,6 +56,56 @@ document.getElementById("app").addEventListener("load", async event => {
     assert(result.bridges.get("0:0").includes(70) && !result.ambiguous, "不同網路的交叉應顯示跨線");
     routes[2] = [{x: 20, y: 0}, {x: 80, y: 0}];
     assert(WireRouter.crossings(wires, routes).ambiguous, "不同網路重疊應顯示警告");
+  });
+  test("clicking a wire creates a branch and dragging the main segment moves the junction", () => {
+    app.loadSample();
+    app.eval("model.wires.pop()");
+    app.render();
+    doc.querySelector('[aria-label="連接 ground1.p"]').click();
+    const wire = $("wires").querySelectorAll(".wire")[2];
+    const point = new app.DOMPoint(300, 240).matrixTransform(wire.getScreenCTM());
+    wire.dispatchEvent(new app.MouseEvent("click", {bubbles: true, clientX: point.x, clientY: point.y}));
+    const branch = app.eval("model.wires[3]");
+    assert(branch && branch.branch.parent === 2, "應建立指向主線的分支");
+    const oldJunction = WireRouter.pointAt(branch ? app.eval("model.wires[2].route") : [], branch.branch.fraction);
+    assert(Math.abs(oldJunction.x - 300) < 2 && near(oldJunction.y, 240), "接點應在點擊位置");
+    assert(app.eval("CircuitEngine.generate(model)").includes("connect(ground1.p, capacitor1.n)"), "分支應產生電氣連接");
+    const main = $("wires").querySelectorAll(".wire")[2];
+    main.setPointerCapture = () => {};
+    const start = new app.DOMPoint(350, 240).matrixTransform(main.getScreenCTM());
+    for (const [type, y] of [["pointerdown", start.y], ["pointermove", start.y - 20], ["pointerup", start.y - 20]])
+      main.dispatchEvent(new app.PointerEvent(type, {bubbles: true, button: 0, pointerId: 7, clientX: start.x, clientY: y}));
+    const updated = app.eval("model.wires");
+    const router = WireRouter.create(app.eval("model.components"), updated);
+    const junction = WireRouter.pointAt(router.route(2), updated[3].branch.fraction);
+    const branchEnd = router.route(3).at(-1);
+    assert(near(junction.x, oldJunction.x) && junction.y < 240 && near(branchEnd.x, junction.x) && near(branchEnd.y, junction.y),
+      `接點及分支應隨主線拖曳 ${JSON.stringify({junction, branchEnd, main: router.route(2)})}`);
+    assert(doc.querySelector(".wire-junction"), "拖曳後仍應顯示接點");
+    app.loadSample();
+  });
+  test("deleting a parent confirms and removes descendants and preserves unrelated wires", () => {
+    app.loadSample();
+    app.eval("model.wires.push({from: {id:'resistor1',port:'n'}, to:{id:'ground1',port:'p'}, branch:{parent:3,fraction:0.5}})");
+    app.render();
+    let message = "";
+    app.confirm = text => { message = text; return false; };
+    $("wires").querySelectorAll(".wire")[2].dispatchEvent(new app.MouseEvent("click", {bubbles: true}));
+    assert(message.includes("2 條分支") && app.eval("model.wires.length") === 5, "取消時應顯示所有分支且不刪除");
+    app.confirm = () => true;
+    $("wires").querySelectorAll(".wire")[2].dispatchEvent(new app.MouseEvent("click", {bubbles: true}));
+    assert(app.eval("model.wires.length") === 2, "應刪除主線及所有分支");
+    app.loadSample();
+  });
+  test("removing an unrelated wire remaps branch references", () => {
+    app.loadSample();
+    app.removeWires(new Set([0]));
+    const saved = app.eval("model");
+    assert(saved.wires[2].branch.parent === 1, "移除其他連線後主線索引應更新");
+    const router = WireRouter.create(saved.components, saved.wires);
+    assert(router.route(2) && app.eval("CircuitEngine.generate(model)").includes("connect(ground1.p, voltage1.n)"),
+      "重編索引後分支仍須可繞線且電氣有效");
+    app.loadSample();
   });
   test("sample ground wire crosses its own net without an extra junction", () => {
     const components = [
@@ -108,10 +165,10 @@ document.getElementById("app").addEventListener("load", async event => {
     app.showResults({names: ["time", "capacitor1.v"], columns: [[0, 1], [0, 5]], timeIndex: 0});
     doc.querySelector(".rotation-controls button:last-child").click();
     const updated = doc.querySelector('.node[aria-label="電阻 resistor1"]');
-    assert(updated.querySelector(".symbol g").getAttribute("transform").includes("rotate(180)"), "符號未旋轉");
+    assert(updated.querySelector(".symbol g").getAttribute("transform").includes("rotate(90)"), "符號未旋轉");
     assert(updated.querySelector(".node-label").style.transform === "", "文字不應跟隨符號旋轉");
     const port = updated.querySelector(".port.p");
-    assert(port.style.left === "120px" && port.style.top === "36px", "畫布端點未旋轉");
+    assert(port.style.left === "60px" && port.style.top === "0px", "畫布端點未旋轉");
     assert($("workspace-count").textContent === "2", "旋轉不應清除模擬結果");
     doc.querySelector(".rotation-controls button:first-child").click();
   });
@@ -211,6 +268,15 @@ document.getElementById("app").addEventListener("load", async event => {
     await importModel(invalid);
     assert($("message").textContent.includes("手動線路格式或座標無效"), "錯誤手動線路應被拒絕");
     assert($("wires").querySelector("path").getAttribute("d").includes("132 100"), "匯入失敗不得更改原模型");
+    app.loadSample();
+    const withBranch = app.eval("JSON.parse(JSON.stringify(model))");
+    await importModel(withBranch);
+    assert(app.eval("model.wires[3].branch.parent") === 2 && $("wires").querySelector(".wire-junction"),
+      "分支應隨模型匯入並保留接點");
+    withBranch.wires[3].branch.parent = 3;
+    await importModel(withBranch);
+    assert($("message").textContent.includes("線路分支資料無效"), "循環分支應被拒絕");
+    assert(app.eval("model.wires[3].branch.parent") === 2, "匯入失敗不得改變原分支");
   });
 
   let failures = 0;

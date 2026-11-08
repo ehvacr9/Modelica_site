@@ -58,6 +58,39 @@ const WireRouter = (() => {
     return simplify([...before, movedA, movedB, ...after]);
   }
 
+  function pointAt(route, fraction) {
+    const lengths = route.slice(1).map((p, i) => Math.abs(p.x - route[i].x) + Math.abs(p.y - route[i].y));
+    const total = lengths.reduce((a, b) => a + b, 0);
+    if (!total) return null;
+    let remaining = total * fraction;
+    for (let i = 0; i < lengths.length; i++) {
+      if (remaining <= lengths[i] || i === lengths.length - 1) {
+        const ratio = Math.max(0, Math.min(1, remaining / lengths[i]));
+        return {x: route[i].x + (route[i + 1].x - route[i].x) * ratio,
+          y: route[i].y + (route[i + 1].y - route[i].y) * ratio};
+      }
+      remaining -= lengths[i];
+    }
+    return null;
+  }
+
+  function nearest(route, point) {
+    let best = null, travelled = 0;
+    const total = route.slice(1).reduce((sum, p, i) =>
+      sum + Math.abs(p.x - route[i].x) + Math.abs(p.y - route[i].y), 0);
+    for (let i = 1; i < route.length; i++) {
+      const a = route[i - 1], b = route[i];
+      const x = Math.max(Math.min(a.x, b.x), Math.min(Math.max(a.x, b.x), point.x));
+      const y = Math.max(Math.min(a.y, b.y), Math.min(Math.max(a.y, b.y), point.y));
+      const length = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+      const distance = Math.hypot(point.x - x, point.y - y);
+      if (!best || distance < best.distance) best = {point: {x, y}, segment: i - 1,
+        fraction: (travelled + Math.abs(x - a.x) + Math.abs(y - a.y)) / total, distance};
+      travelled += length;
+    }
+    return best;
+  }
+
   function crossings(wires, routes) {
     const parents = new Map();
     const key = end => `${end.id}.${end.port}`;
@@ -154,6 +187,7 @@ const WireRouter = (() => {
       return {point, stub: {x: point.x + position.dx * clearance, y: point.y + position.dy * clearance}, id: part.id};
     }
     const endpoints = wires.map(wire => [endpoint(wire.from), endpoint(wire.to)]);
+    const cache = new Map();
     let grid;
 
     function buildGrid() {
@@ -243,22 +277,42 @@ const WireRouter = (() => {
     }
 
     function route(index) {
+      if (cache.has(index)) return cache.get(index);
+      const wire = wires[index];
+      if (wire.branch) {
+        const parent = route(wire.branch.parent);
+        if (!parent) { cache.set(index, null); return null; }
+        const point = pointAt(parent, wire.branch.fraction);
+        endpoints[index][1] = point ? {point, stub: point, id: null} : null;
+        grid = null;
+      }
       const [a, b] = endpoints[index];
-      if (!a || !b) return null;
+      if (!a || !b) { cache.set(index, null); return null; }
+      if (wire.route && validManual(index, wire.route)) { cache.set(index, wire.route); return wire.route; }
       for (const box of obstacles) {
         if ((box.id !== a.id && intersects(a.point, a.stub, box)) ||
-            (box.id !== b.id && intersects(b.point, b.stub, box))) return null;
+            (box.id !== b.id && intersects(b.point, b.stub, box))) { cache.set(index, null); return null; }
       }
       const clear = points => points.slice(1).every((point, i) =>
         obstacles.every(box => !intersects(points[i], point, box)));
       for (const corner of [{x: a.stub.x, y: b.stub.y}, {x: b.stub.x, y: a.stub.y}]) {
         const direct = [a.stub, corner, b.stub];
-        if (clear(direct)) return simplify([a.point, ...direct, b.point]);
+        if (clear(direct)) {
+          const result = simplify([a.point, ...direct, b.point]);
+          cache.set(index, result); return result;
+        }
       }
       const path = search(a.stub, b.stub);
-      return path ? simplify([a.point, ...path, b.point]) : null;
+      const result = path ? simplify([a.point, ...path, b.point]) : null;
+      cache.set(index, result); return result;
     }
     function validManual(index, points) {
+      if (wires[index].branch && endpoints[index][1] && endpoints[index][1].id !== null) {
+        const parent = route(wires[index].branch.parent);
+        const point = parent && pointAt(parent, wires[index].branch.fraction);
+        endpoints[index][1] = point ? {point, stub: point, id: null} : null;
+        grid = null;
+      }
       const [a, b] = endpoints[index];
       if (!a || !b || !Array.isArray(points) || points.length < 2 || points.length > 200) return false;
       if (points.some(p => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y) ||
@@ -268,7 +322,7 @@ const WireRouter = (() => {
       const outward = (point, end) => (point.x - end.point.x) * (end.stub.x - end.point.x) +
         (point.y - end.point.y) * (end.stub.y - end.point.y);
       if (outward(points[1], a) < clearance * clearance ||
-          outward(points.at(-2), b) < clearance * clearance) return false;
+          (b.id !== null && outward(points.at(-2), b) < clearance * clearance)) return false;
       return points.slice(1).every((point, i) => {
         const previous = points[i];
         if ((point.x !== previous.x && point.y !== previous.y) ||
@@ -282,5 +336,5 @@ const WireRouter = (() => {
     }
     return {route, validManual};
   }
-  return {create, port, shiftSegment, crossings};
+  return {create, port, shiftSegment, crossings, pointAt, nearest};
 })();

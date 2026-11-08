@@ -196,12 +196,16 @@ function symbol(type, rotation = 0) {
 function drawWires() {
   const svg = $("wires");
   svg.replaceChildren();
+  function wirePoint(event) {
+    return new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  }
   const router = WireRouter.create(model.components, model.wires);
   const failed = [], adjusted = [];
   const routes = model.wires.map((wire, index) => {
-    if (wire.route && router.validManual(index, wire.route)) return wire.route;
-    if (wire.route) adjusted.push(`${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}`);
-    return router.route(index);
+    const route = router.route(index);
+    if (wire.route && !router.validManual(index, wire.route))
+      adjusted.push(`${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}`);
+    return route;
   });
   const geometry = WireRouter.crossings(model.wires, routes);
   const ns = "http://www.w3.org/2000/svg";
@@ -235,7 +239,8 @@ function drawWires() {
     if (points) path.addEventListener("pointerdown", event => {
       if (event.button !== 0) return;
       event.stopPropagation();
-      const start = canvasPoint(event.clientX, event.clientY);
+      if (pending) return;
+      const start = wirePoint(event);
       let segment = 0, distance = Infinity;
       for (let i = 0; i < points.length - 1; i++) {
         const p = points[i], q = points[i + 1];
@@ -264,7 +269,19 @@ function drawWires() {
         path.removeEventListener("pointerup", end);
         path.removeEventListener("pointercancel", end);
         if (dragged) {
-          if (e.type !== "pointercancel" && candidate && router.validManual(index, candidate)) wire.route = candidate;
+          if (e.type !== "pointercancel" && candidate && router.validManual(index, candidate)) {
+            for (const child of model.wires) {
+              if (!child.branch || child.branch.parent !== index) continue;
+              const oldPoint = WireRouter.pointAt(points, child.branch.fraction);
+              const closest = WireRouter.nearest(points, oldPoint);
+              if (closest.segment === segment) {
+                if (horizontal) oldPoint.y += (e.clientY - event.clientY) / view.scale;
+                else oldPoint.x += (e.clientX - event.clientX) / view.scale;
+              }
+              child.branch.fraction = Math.max(0.000001, Math.min(0.999999, WireRouter.nearest(candidate, oldPoint).fraction));
+            }
+            wire.route = candidate;
+          }
           else if (e.type !== "pointercancel") notify("無法在此位置放置線段，請避開元件並保留端點連接。", true);
           drawWires();
         }
@@ -276,8 +293,18 @@ function drawWires() {
     path.addEventListener("click", event => {
       event.stopPropagation();
       if (dragged) { dragged = false; return; }
-      if (!confirm(`確定刪除連線 ${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}？`)) return;
-      model.wires.splice(index, 1);
+      if (pending) {
+        if (!points) { notify("無法連接未成功繞線的線段。", true); return; }
+        connectToWire(index, points, wirePoint(event));
+        return;
+      }
+      const removed = dependentWires([index]);
+      const branches = [...removed].filter(i => i !== index).map(i => {
+        const w = model.wires[i]; return `${w.from.id}.${w.from.port} ↔ ${w.to.id}.${w.to.port}`;
+      });
+      const suffix = branches.length ? `\n也會刪除 ${branches.length} 條分支：\n${branches.join("\n")}` : "";
+      if (!confirm(`確定刪除連線 ${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}？${suffix}`)) return;
+      removeWires(removed);
       render();
       invalidate();
     });
@@ -314,7 +341,7 @@ function drawWires() {
 function connect(endpoint) {
   if (!pending) {
     pending = endpoint;
-    $("wire-hint").textContent = "請選擇另一個端點";
+    $("wire-hint").textContent = "請選擇另一個端點或線段";
   } else {
     const a = `${pending.id}.${pending.port}`, b = `${endpoint.id}.${endpoint.port}`;
     const exists = model.wires.some(w => {
@@ -331,6 +358,53 @@ function connect(endpoint) {
     $("wire-hint").textContent = "就緒";
   }
   render();
+}
+
+function dependentWires(indices) {
+  const removed = new Set(indices);
+  for (let i = 0; i < model.wires.length; i++) {
+    const branch = model.wires[i].branch;
+    if (branch && removed.has(branch.parent)) removed.add(i);
+  }
+  return removed;
+}
+
+function removeWires(removed) {
+  const indices = new Map(), kept = [];
+  model.wires.forEach((wire, index) => {
+    if (!removed.has(index)) { indices.set(index, kept.length); kept.push(wire); }
+  });
+  for (const wire of kept) if (wire.branch) wire.branch.parent = indices.get(wire.branch.parent);
+  model.wires = kept;
+}
+
+function connectToWire(index, route, point) {
+  const parent = model.wires[index], target = parent.from;
+  const key = end => `${end.id}.${end.port}`;
+  const connected = new Set([key(pending)]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const wire of model.wires) {
+      const a = key(wire.from), b = key(wire.to);
+      if (connected.has(a) && !connected.has(b)) { connected.add(b); changed = true; }
+      if (connected.has(b) && !connected.has(a)) { connected.add(a); changed = true; }
+    }
+  }
+  if (connected.has(key(target))) { notify("此端點已與該線路電氣連接。", true); return; }
+  if (model.wires.length >= 300) { notify("連線數量已達上限。", true); return; }
+  const nearest = WireRouter.nearest(route, point);
+  if (!nearest || nearest.fraction <= 0 || nearest.fraction >= 1) {
+    notify("請點選線段內部；若要連接端點請直接點選元件端點。", true); return;
+  }
+  const wire = {from: pending, to: {...target}, branch: {parent: index, fraction: nearest.fraction}};
+  const trial = [...model.wires, wire], router = WireRouter.create(model.components, trial);
+  if (!router.route(trial.length - 1)) {
+    notify("無法從元件端點繞線至此位置，請移開元件或選擇其他位置。", true); return;
+  }
+  model.wires.push(wire);
+  pending = null; $("wire-hint").textContent = "就緒";
+  render(); invalidate();
 }
 
 function makeNode(item) {
@@ -473,22 +547,24 @@ function addComponent(type, x, y) {
 }
 
 function loadSample() {
-  const width = $("canvas").clientWidth;
-  const right = Math.max(160, Math.min(width - 135, 480));
-  const middle = Math.max(140, Math.round(right / 2));
   model = {
     diagramVersion: 2,
     components: [
       {id: "voltage1", type: "voltage", value: 5, x: 25, y: 110},
-      {id: "resistor1", type: "resistor", value: 1000, x: middle, y: 45},
-      {id: "capacitor1", type: "capacitor", value: 0.0001, x: right, y: 150},
-      {id: "ground1", type: "ground", x: middle, y: 270}
+      {id: "resistor1", type: "resistor", value: 1000, x: 240, y: 64, rotation: 270},
+      {id: "capacitor1", type: "capacitor", value: 0.0001, x: 480, y: 110},
+      {id: "ground1", type: "ground", x: 240, y: 270}
     ],
     wires: [
-      {from: {id: "voltage1", port: "p"}, to: {id: "resistor1", port: "p"}},
-      {from: {id: "resistor1", port: "n"}, to: {id: "capacitor1", port: "p"}},
-      {from: {id: "capacitor1", port: "n"}, to: {id: "voltage1", port: "n"}},
-      {from: {id: "ground1", port: "p"}, to: {id: "voltage1", port: "n"}}
+      {from: {id: "voltage1", port: "p"}, to: {id: "resistor1", port: "p"},
+        route: [{x: 85, y: 110}, {x: 85, y: 35}, {x: 228, y: 35}, {x: 228, y: 100}, {x: 240, y: 100}]},
+      {from: {id: "resistor1", port: "n"}, to: {id: "capacitor1", port: "p"},
+        route: [{x: 360, y: 100}, {x: 372, y: 100}, {x: 372, y: 86}, {x: 540, y: 86}, {x: 540, y: 110}]},
+      {from: {id: "capacitor1", port: "n"}, to: {id: "voltage1", port: "n"},
+        route: [{x: 540, y: 182}, {x: 540, y: 240}, {x: 85, y: 240}, {x: 85, y: 182}]},
+      {from: {id: "ground1", port: "p"}, to: {id: "voltage1", port: "n"},
+        branch: {parent: 2, fraction: 298 / 571},
+        route: [{x: 300, y: 270}, {x: 300, y: 240}]}
     ],
     stopTime: 1
   };
@@ -750,8 +826,10 @@ $("canvas").addEventListener("click", event => {
 });
 function removeSelected() {
   if (!selected) return;
+  const removed = dependentWires(model.wires.map((wire, index) =>
+    wire.from.id === selected || wire.to.id === selected ? index : -1).filter(index => index >= 0));
   model.components = model.components.filter(item => item.id !== selected);
-  model.wires = model.wires.filter(wire => wire.from.id !== selected && wire.to.id !== selected);
+  removeWires(removed);
   selected = null; pending = null; $("wire-hint").textContent = "就緒"; render(); invalidate();
 }
 $("delete").addEventListener("click", removeSelected);

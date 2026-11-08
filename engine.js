@@ -28,13 +28,23 @@ const CircuitEngine = (() => {
       lines.push(`  ${cls} ${part.id}${modifier};`);
     }
     lines.push("equation");
-    for (const wire of data.wires) {
+    for (const [index, wire] of data.wires.entries()) {
       const endpoints = [wire?.from, wire?.to];
       for (const end of endpoints) {
         if (!end || typeof end.id !== "string" || !parts.has(end.id) ||
             !parts.get(end.id).ports.includes(end.port)) throw new Error("連線包含不存在的元件或端點。");
       }
       const [a, b] = endpoints.map(end => `${end.id}.${end.port}`);
+      if (wire.branch !== undefined) {
+        const branch = wire.branch;
+        if (!branch || !Number.isInteger(branch.parent) || branch.parent < 0 || branch.parent >= index ||
+            typeof branch.fraction !== "number" || !Number.isFinite(branch.fraction) ||
+            branch.fraction <= 0 || branch.fraction >= 1)
+          throw new Error("線路分支資料無效。");
+        const parent = data.wires[branch.parent];
+        const targets = [parent.from, parent.to].map(end => `${end.id}.${end.port}`);
+        if (!targets.includes(b)) throw new Error("分支的電氣端點與主線不一致。");
+      }
       const pair = [a, b].sort().join("|");
       if (a === b || pairs.has(pair)) throw new Error("連線不可重複或連接至自身。");
       pairs.add(pair); connected.add(a); connected.add(b);

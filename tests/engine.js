@@ -19,6 +19,18 @@ test("rejects malformed or missing values", () => {
 test("validates connections", () => {
   fails(() => CircuitEngine.generate({components: [{id:"g", type:"ground"}], wires: [], stopTime:1}, true));
 });
+test("validates branch parent, position and electrical target", () => {
+  const model = {components: [{id:"a",type:"ground"}, {id:"b",type:"ground"}, {id:"c",type:"ground"}],
+    wires: [{from:{id:"a",port:"p"},to:{id:"b",port:"p"}},
+      {from:{id:"c",port:"p"},to:{id:"a",port:"p"},branch:{parent:0,fraction:0.5}}],stopTime:1};
+  assert(CircuitEngine.generate(model).includes("connect(c.p, a.p)"), "分支應生成有效連接");
+  for (const branch of [{parent:1,fraction:0.5},{parent:0,fraction:0},{parent:0,fraction:2},{parent:99,fraction:0.5}]) {
+    model.wires[1].branch = branch; fails(() => CircuitEngine.generate(model));
+  }
+  model.wires[1].branch = {parent:0,fraction:0.5};
+  model.wires[1].to = {id:"c",port:"p"};
+  fails(() => CircuitEngine.generate(model));
+});
 test("accepts event timestamps but rejects decreasing time", () => {
   const result = CircuitEngine.parseCsv(csv('"time","x"\n0,1\n0.5,2\n0.5,3\n1,4\n'));
   assert(result.columns[1][2] === 3, "事件點資料錯誤");
