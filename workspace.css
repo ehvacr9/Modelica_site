@@ -30,6 +30,15 @@
 #canvas-world { position: absolute; inset: 0; transform-origin: 0 0; pointer-events: none; }
 #canvas-world .node { pointer-events: auto; }
 #canvas-world #wires { pointer-events: none; }
+.node { background: transparent; border: 1px solid transparent; border-radius: 4px; box-shadow: none; }
+.node.selected { border: 1px dashed #617af2; box-shadow: none; }
+.node .symbol { position: absolute; inset: 0; width: 120px; height: 72px; overflow: visible; pointer-events: none; }
+.symbol { fill: none; stroke: #344357; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.node-label { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); text-align: center; white-space: nowrap; pointer-events: none; }
+.node-label strong, .node-label small { display: block; color: #526174; }
+.node .port { transform: translate(-50%, -50%); right: auto; }
+.component-icon .symbol { width: 30px; height: 25px; stroke: #5a71df; }
+.properties-form select { width: 100%; border: 1px solid #e3e8f1; border-radius: 6px; padding: 9px; color: #344357; background: #fff; }
 .wire.wire-unrouted { stroke: #d35c5c; stroke-dasharray: 6 4; }
 .wire-warning { padding: 8px 16px; border-top: 1px solid #f1dada; color: #a53e44; font-size: 11px; line-height: 1.5; }
 .view-tabs { display: flex; width: fit-content; gap: 3px; margin-top: 12px; padding: 4px; border-radius: 8px; background: #e9edf5; }

@@ -3,6 +3,14 @@
 const WireRouter = (() => {
   const clearance = 12;
 
+  function port(part, name) {
+    const directions = [[-1, 0], [0, -1], [1, 0], [0, 1]];
+    const rotation = part.rotation === undefined ? 0 : part.rotation;
+    const direction = directions[(rotation / 90 + (name === "n" ? 2 : 0)) % 4];
+    return {x: part.x + 60 + direction[0] * 60, y: part.y + 36 + direction[1] * 36,
+      dx: direction[0], dy: direction[1]};
+  }
+
   function intersects(a, b, rect) {
     if (a.x === b.x)
       return a.x > rect.left && a.x < rect.right &&
@@ -34,8 +42,9 @@ const WireRouter = (() => {
     function endpoint(end) {
       const part = parts.get(end.id);
       if (!part) return null;
-      const point = {x: part.x + (end.port === "p" ? 0 : 120), y: part.y + 36};
-      return {point, stub: {x: point.x + (end.port === "p" ? -clearance : clearance), y: point.y}, id: part.id};
+      const position = port(part, end.port);
+      const point = {x: position.x, y: position.y};
+      return {point, stub: {x: point.x + position.dx * clearance, y: point.y + position.dy * clearance}, id: part.id};
     }
     const endpoints = wires.map(wire => [endpoint(wire.from), endpoint(wire.to)]);
     let grid;
@@ -144,5 +153,5 @@ const WireRouter = (() => {
     }
     return {route};
   }
-  return {create};
+  return {create, port};
 })();

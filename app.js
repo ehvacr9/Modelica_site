@@ -1,10 +1,10 @@
 "use strict";
 
 const definitions = {
-  voltage: {name: "直流電壓源", icon: "⊕", parameter: "電壓 V", unit: "V", value: 5},
-  resistor: {name: "電阻", icon: "▱", parameter: "電阻 R", unit: "Ω", value: 1000},
-  capacitor: {name: "電容", icon: "⊣", parameter: "電容 C", unit: "F", value: 0.0001},
-  ground: {name: "接地", icon: "⏚"}
+  voltage: {name: "直流電壓源", parameter: "電壓 V", unit: "V", value: 5},
+  resistor: {name: "電阻", parameter: "電阻 R", unit: "Ω", value: 1000},
+  capacitor: {name: "電容", parameter: "電容 C", unit: "F", value: 0.0001},
+  ground: {name: "接地"}
 };
 const $ = id => document.getElementById(id);
 let model = {components: [], wires: [], stopTime: 1};
@@ -147,7 +147,46 @@ function fitView() {
 function portPosition(endpoint) {
   const item = model.components.find(part => part.id === endpoint.id);
   if (!item) return null;
-  return {x: item.x + (endpoint.port === "p" ? 0 : 120), y: item.y + 36};
+  return WireRouter.port(item, endpoint.port);
+}
+
+function symbol(type, rotation = 0) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 120 72");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("symbol");
+  const group = document.createElementNS(ns, "g");
+  group.setAttribute("transform", `translate(60 36) rotate(${rotation})`);
+  const shapes = {
+    resistor: ["M -36 0 H -27 L -23 -9 L -15 9 L -7 -9 L 1 9 L 9 -9 L 17 9 L 23 -9 L 27 0 H 36"],
+    capacitor: ["M -36 0 H -7 M -7 -17 V 17 M 7 -17 V 17 M 7 0 H 36"],
+    voltage: ["M -36 0 H -19 M 19 0 H 36", "M -19 0 A 19 19 0 1 0 19 0 A 19 19 0 1 0 -19 0"],
+    ground: ["M -36 0 H -6 M -6 -17 V 17 M 1 -11 V 11 M 8 -5 V 5"]
+  };
+  for (const data of shapes[type]) {
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", data);
+    group.append(path);
+  }
+  svg.append(group);
+  if (type === "voltage") {
+    const offsets = [[-9, 0], [0, -9], [9, 0], [0, 9]];
+    const [dx, dy] = offsets[rotation / 90];
+    const plusX = 60 + dx, plusY = 36 + dy, minusX = 60 - dx, minusY = 36 - dy;
+    const polarity = document.createElementNS(ns, "path");
+    polarity.setAttribute("d", `M ${plusX - 4} ${plusY} h 8 M ${plusX} ${plusY - 4} v 8 M ${minusX - 4} ${minusY} h 8`);
+    svg.append(polarity);
+  }
+  if (rotation % 180 === 0) {
+    const leads = document.createElementNS(ns, "path");
+    let data = "M 0 36 H 24";
+    if (type !== "ground") data += " M 96 36 H 120";
+    if (rotation === 180 && type === "ground") data = "M 96 36 H 120";
+    leads.setAttribute("d", data);
+    svg.append(leads);
+  }
+  return svg;
 }
 
 function drawWires() {
@@ -209,10 +248,9 @@ function makeNode(item) {
   node.style.left = item.x + "px";
   node.style.top = item.y + "px";
   node.setAttribute("aria-label", `${def.name} ${item.id}`);
-  const icon = document.createElement("span");
-  icon.className = "component-icon";
-  icon.textContent = def.icon;
+  const icon = symbol(item.type, item.rotation || 0);
   const details = document.createElement("div");
+  details.className = "node-label";
   const name = document.createElement("strong");
   name.textContent = item.id;
   const value = document.createElement("small");
@@ -222,6 +260,9 @@ function makeNode(item) {
   for (const port of item.type === "ground" ? ["p"] : ["p", "n"]) {
     const button = document.createElement("button");
     button.className = `port ${port}` + (pending && pending.id === item.id && pending.port === port ? " active" : "");
+    const position = WireRouter.port(item, port);
+    button.style.left = `${position.x - item.x}px`;
+    button.style.top = `${position.y - item.y}px`;
     button.title = `${item.id}.${port}`;
     button.setAttribute("aria-label", `連接 ${item.id}.${port}`);
     button.addEventListener("pointerdown", event => event.stopPropagation());
@@ -281,6 +322,21 @@ function renderProperties() {
   const kindLabel = document.createElement("label"); kindLabel.textContent = "類型";
   const kind = document.createElement("div"); kind.className = "detail"; kind.textContent = def.name;
   container.append(label, detail, kindLabel, kind);
+  const rotationLabel = document.createElement("label");
+  rotationLabel.textContent = "方向（順時針）";
+  const rotation = document.createElement("select");
+  rotation.setAttribute("aria-label", "元件方向");
+  for (const angle of [0, 90, 180, 270]) {
+    const option = document.createElement("option");
+    option.value = String(angle); option.textContent = `${angle}°`;
+    rotation.append(option);
+  }
+  rotation.value = String(item.rotation || 0);
+  rotation.addEventListener("change", () => {
+    item.rotation = Number(rotation.value);
+    render();
+  });
+  container.append(rotationLabel, rotation);
   if (def.parameter) {
     const valueLabel = document.createElement("label"); valueLabel.textContent = `${def.parameter} (${def.unit})`;
     const input = document.createElement("input"); input.type = "number"; input.step = "any"; input.value = item.value;
@@ -535,7 +591,7 @@ function showResults(result) {
 for (const [type, def] of Object.entries(definitions)) {
   const button = document.createElement("button");
   button.className = "library-item"; button.draggable = true;
-  const icon = document.createElement("span"); icon.className = "component-icon"; icon.textContent = def.icon;
+  const icon = document.createElement("span"); icon.className = "component-icon"; icon.append(symbol(type));
   const text = document.createElement("span"), name = document.createElement("strong");
   name.textContent = def.name; text.append(name); button.append(icon, text);
   button.addEventListener("dragstart", event => event.dataTransfer.setData("text/plain", type));
@@ -663,6 +719,8 @@ $("load").addEventListener("change", async event => {
         candidate.components.some(item => !Number.isFinite(item.x) || !Number.isFinite(item.y) || Math.abs(item.x) > positionLimit || Math.abs(item.y) > positionLimit)) {
       throw new Error("元件位置或模擬時間無效。");
     }
+    if (candidate.components.some(item => item.rotation !== undefined && ![0, 90, 180, 270].includes(item.rotation)))
+      throw new Error("元件方向必須為 0、90、180 或 270 度。");
     model = candidate; selected = null; pending = null; $("wire-hint").textContent = "就緒"; $("stop-time").value = model.stopTime;
     activateTab("tab-modeling", primaryTabs); activateTab("tab-model-view", viewTabs);
     render(); fitView(); invalidate(); notify("模型已匯入。");
