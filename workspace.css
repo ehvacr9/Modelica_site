@@ -9,8 +9,12 @@
 .layout > .inspector { grid-column: 3; grid-row: 1; }
 .inspector { display: flex; flex-direction: column; min-width: 0; }
 .inspector .simulation-settings { flex-shrink: 0; }
-.panel-controls { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 15px; }
-.panel-controls .panel-toggle { width: 34px; padding: 6px; font-size: 16px; }
+.workspace { position: relative; }
+.panel-toggle { position: absolute; z-index: 2; top: 50%; width: 28px; padding: 7px 4px; font-size: 16px; transform: translateY(-50%); }
+#toggle-library { left: 0; transform: translate(-50%, -50%); }
+#toggle-inspector { right: 0; transform: translate(50%, -50%); }
+.layout.library-collapsed #toggle-library { left: 14px; }
+.layout.inspector-collapsed #toggle-inspector { right: 14px; }
 .workspace-panel { border-top: 1px solid #edf0f5; margin-top: 24px; padding-top: 18px; min-height: 220px; }
 .workspace-title { display: flex; align-items: center; justify-content: space-between; }
 .workspace-table-wrap { max-height: 300px; overflow: auto; margin-top: 12px; border: 1px solid #edf0f5; border-radius: 7px; }
@@ -26,8 +30,8 @@
 .tab, .view-tab { border: 0; background: transparent; color: #8796aa; font-weight: 700; cursor: pointer; }
 .tab { padding: 12px 4px; border-bottom: 2px solid transparent; }
 .tab.active { color: #4d68e5; border-bottom-color: #536eef; }
-.modeling-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
-.view-tabs { display: flex; gap: 3px; padding: 4px; border-radius: 8px; background: #e9edf5; }
+.modeling-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 12px; }
+.view-tabs { display: flex; width: fit-content; gap: 3px; margin-top: 12px; padding: 4px; border-radius: 8px; background: #e9edf5; }
 .view-tab { padding: 8px 13px; border-radius: 6px; font-size: 12px; }
 .view-tab.active { background: white; color: #5069df; box-shadow: 0 1px 5px #253c5b12; }
 .code-view, .plotting-panel { background: white; border: 1px solid #e5eaf2; border-radius: 10px; min-height: 490px; padding: 20px; }
@@ -38,7 +42,7 @@
 .plotting-panel #plot-area { padding-top: 30px; }
 .plotting-panel #plot { height: 310px; }
 .plotting-panel #plot-label { font-size: 12px; font-weight: 600; }
-.replay-controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-top: 20px; color: #66778d; font-size: 12px; }
+.replay-controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-top: 16px; color: #66778d; font-size: 12px; }
 .replay-controls select { border: 1px solid #e2e8f0; border-radius: 6px; padding: 7px; color: #526174; background: white; }
 .replay-controls input { flex: 1 1 120px; min-width: 90px; accent-color: #536eef; }
 .replay-controls output { min-width: 110px; color: #526174; font-variant-numeric: tabular-nums; }
@@ -54,6 +58,8 @@
 }
 @media(max-width: 700px) {
   .inspector { display: flex; flex-direction: column; }
+  #toggle-library, .layout.library-collapsed #toggle-library { left: 50%; top: 0; transform: translate(-50%, -50%); }
+  #toggle-inspector, .layout.inspector-collapsed #toggle-inspector { left: 50%; right: auto; top: auto; bottom: 0; transform: translate(-50%, 50%); }
   .workspace-panel { margin-top: 16px; }
   .workspace-table-wrap { max-height: 180px; }
   .plotting-panel #plot { height: 220px; }

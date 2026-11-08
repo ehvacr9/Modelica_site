@@ -78,6 +78,7 @@ function activateTab(tabId, choices) {
   }
   if (choices === primaryTabs) {
     $("model-settings").hidden = tabId === "tab-plotting";
+    $("result-sidebar").hidden = tabId !== "tab-plotting";
     if (tabId !== "tab-plotting") pauseReplay();
   }
 }
@@ -520,7 +521,7 @@ $("simulate").addEventListener("click", async () => {
   button.disabled = true; button.textContent = "模擬中…"; $("result-state").textContent = "執行中";
   try {
     const result = await post("/api/simulate", model);
-    if (current === revision) { showResults(result); notify("OpenModelica 模擬完成；請在變數工作區選擇變數，或切換到繪圖區。"); }
+    if (current === revision) { showResults(result); notify("OpenModelica 模擬完成；請切換到結果頁，在變數工作區選擇變數。"); }
     else notify("模型已變更，已忽略舊的模擬結果。");
   } catch (error) {
     if (current === revision) $("result-state").textContent = "模擬失敗";

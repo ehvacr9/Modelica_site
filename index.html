@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpenModelica Studio · 雛形</title>
   <link rel="stylesheet" href="./style.css">
-  <link rel="stylesheet" href="./workspace.css?v=20261109-3">
+  <link rel="stylesheet" href="./workspace.css?v=20261109-4">
 </head>
 <body>
   <header class="topbar">
@@ -20,26 +20,35 @@
       <div id="library" class="library"></div>
     </aside>
     <section class="workspace">
-      <div class="panel-controls" aria-label="側欄顯示設定"><button id="toggle-library" class="button subtle panel-toggle" aria-controls="library-panel" aria-expanded="true" aria-label="收合元件庫" title="收合元件庫">&lt;</button><button id="toggle-inspector" class="button subtle panel-toggle" aria-controls="inspector-panel" aria-expanded="true" aria-label="收合右側欄" title="收合右側欄">&gt;</button></div>
+      <button id="toggle-library" class="button subtle panel-toggle" aria-controls="library-panel" aria-expanded="true" aria-label="收合元件庫" title="收合元件庫">&lt;</button>
+      <button id="toggle-inspector" class="button subtle panel-toggle" aria-controls="inspector-panel" aria-expanded="true" aria-label="收合右側欄" title="收合右側欄">&gt;</button>
       <div class="workspace-heading"><div><div class="eyebrow">工作區 / 電氣模型</div><h1>電路建模工作區 <span>雛形</span></h1><p>建立、模擬與檢視物理系統模型</p></div><span class="pill" id="result-state" role="status">尚未執行</span></div>
       <div class="primary-tabs" role="tablist" aria-label="工作區">
         <button id="tab-modeling" class="tab active" role="tab" aria-selected="true" aria-controls="modeling">建模</button>
-        <button id="tab-plotting" class="tab" role="tab" aria-selected="false" aria-controls="plotting" tabindex="-1">繪圖</button>
+        <button id="tab-plotting" class="tab" role="tab" aria-selected="false" aria-controls="plotting" tabindex="-1">結果</button>
       </div>
       <section id="modeling" role="tabpanel" aria-labelledby="tab-modeling">
         <div class="modeling-toolbar">
-          <div class="view-tabs" role="tablist" aria-label="建模視圖">
-            <button id="tab-model-view" class="view-tab active" role="tab" aria-selected="true" aria-controls="model-view">模型視圖</button>
-            <button id="tab-code-view" class="view-tab" role="tab" aria-selected="false" aria-controls="code-view" tabindex="-1">程式碼視圖</button>
-          </div>
           <div class="canvas-tools"><button id="delete" class="icon-button" title="刪除選取元件">⌫</button><button id="clear" class="button subtle">清空畫布</button></div>
         </div>
         <div id="model-view" role="tabpanel" aria-labelledby="tab-model-view"><div class="canvas-container"><div class="canvas-header"><span><i></i> 模型畫布</span><span id="count">0 個元件</span></div><div id="canvas" class="canvas" aria-label="電路建模畫布"><svg id="wires" aria-label="連線"></svg><div id="empty" class="empty">從左側新增元件，開始建立模型</div></div><div class="canvas-footer"><span>●　點擊端點開始連線</span><span id="wire-hint">就緒</span></div></div></div>
         <div id="code-view" class="code-view" role="tabpanel" aria-labelledby="tab-code-view" hidden><div class="code-header"><div><div class="eyebrow">產生的程式碼</div><h2>Modelica 程式碼 <span class="readonly">唯讀</span></h2></div><button id="copy" class="button subtle">複製</button></div><pre id="code">正在產生程式碼…</pre></div>
+        <div class="view-tabs" role="tablist" aria-label="建模視圖">
+          <button id="tab-model-view" class="view-tab active" role="tab" aria-selected="true" aria-controls="model-view">模型視圖</button>
+          <button id="tab-code-view" class="view-tab" role="tab" aria-selected="false" aria-controls="code-view" tabindex="-1">程式碼視圖</button>
+        </div>
       </section>
       <section id="plotting" class="plotting-panel" role="tabpanel" aria-labelledby="tab-plotting" hidden>
         <div class="panel-heading"><div><div class="eyebrow">模擬結果</div><h2>繪圖區</h2></div></div>
-        <div class="replay-controls" aria-label="模擬結果重播">
+        <div id="plot-empty" class="plot-empty"><span>⌁</span><strong>尚無繪圖資料</strong><p>完成模擬後，從右側變數工作區選擇變數。</p></div>
+        <div id="plot-area" hidden><div id="plot-label"></div><svg id="plot" viewBox="0 0 600 190" preserveAspectRatio="none" aria-label="選取變數隨時間變化圖"></svg><div id="plot-range"></div></div>
+      </section>
+    </section>
+    <aside id="inspector-panel" class="inspector" aria-label="屬性與變數工作區"><div id="model-settings"><div class="section-label">元件屬性</div><h2>屬性設定</h2><p class="muted">選取畫布中的元件以編輯。</p><div id="properties" class="properties-empty"><span>◇</span><strong>尚未選取元件</strong><p>點擊元件查看其屬性</p></div><div class="simulation-settings"><div class="section-label">模擬</div><h3>模擬設定</h3><label for="stop-time">結束時間 <span>秒</span></label><input id="stop-time" type="number" min="0.000001" step="any" value="1"><p>使用 OpenModelica 執行暫態模擬。</p></div></div>
+      <div id="result-sidebar" hidden>
+      <section class="replay-panel" aria-label="模擬結果重播">
+        <div class="section-label">模擬結果</div><h2>結果重播</h2>
+        <div class="replay-controls">
           <button id="replay-play" class="button primary" disabled>▶ 播放</button>
           <button id="replay-pause" class="button subtle" disabled>暫停</button>
           <label for="replay-speed">播放速度</label><select id="replay-speed" disabled><option value="0.25">0.25 倍</option><option value="0.5">0.5 倍</option><option value="1" selected>1 倍</option><option value="2">2 倍</option><option value="5">5 倍</option><option value="10">10 倍</option></select>
@@ -47,20 +56,17 @@
           <output id="replay-time" for="replay-progress">尚無資料</output>
         </div>
         <p class="replay-hint">播放已完成的模擬結果，不會暫停或重新執行模擬。</p>
-        <div id="plot-empty" class="plot-empty"><span>⌁</span><strong>尚無繪圖資料</strong><p>完成模擬後，從右側變數工作區選擇變數。</p></div>
-        <div id="plot-area" hidden><div id="plot-label"></div><svg id="plot" viewBox="0 0 600 190" preserveAspectRatio="none" aria-label="選取變數隨時間變化圖"></svg><div id="plot-range"></div></div>
       </section>
-    </section>
-    <aside id="inspector-panel" class="inspector" aria-label="屬性與變數工作區"><div id="model-settings"><div class="section-label">元件屬性</div><h2>屬性設定</h2><p class="muted">選取畫布中的元件以編輯。</p><div id="properties" class="properties-empty"><span>◇</span><strong>尚未選取元件</strong><p>點擊元件查看其屬性</p></div><div class="simulation-settings"><div class="section-label">模擬</div><h3>模擬設定</h3><label for="stop-time">結束時間 <span>秒</span></label><input id="stop-time" type="number" min="0.000001" step="any" value="1"><p>使用 OpenModelica 執行暫態模擬。</p></div></div>
       <section class="workspace-panel" aria-label="變數工作區">
         <div class="workspace-title"><div><div class="section-label">模擬資料</div><h2>變數工作區</h2></div><span id="workspace-count" class="pill">0</span></div>
         <p class="muted">點擊變數繪圖；數值為模擬結束時的值。</p>
         <div class="workspace-table-wrap"><table class="workspace-table"><thead><tr><th scope="col">名稱</th><th scope="col">數值</th></tr></thead><tbody id="workspace-variables"></tbody></table><p id="workspace-empty" class="workspace-empty">模擬完成後顯示變數</p></div>
       </section>
+      </div>
     </aside>
   </main>
   <div id="message" class="message" role="status" hidden></div>
   <script src="./engine.js?v=20261109-3"></script>
-  <script src="./app.js?v=20261109-3"></script>
+  <script src="./app.js?v=20261109-4"></script>
 </body>
 </html>
