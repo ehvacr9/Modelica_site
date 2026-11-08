@@ -46,31 +46,54 @@ const CircuitEngine = (() => {
       const missing = [];
       for (const [id, part] of parts) for (const port of part.ports) if (!connected.has(`${id}.${port}`)) missing.push(`${id}.${port}`);
       if (missing.length) throw new Error("模擬前請連接所有端點：" + missing.join(", "));
-      if (![...parts.values()].some(p => p.kind === "capacitor")) throw new Error("目前的結果圖需要至少一個電容。");
       if (typeof data.stopTime !== "number" || !Number.isFinite(data.stopTime) || data.stopTime <= 0 || data.stopTime > 1e6)
         throw new Error("模擬時間必須大於 0 且不超過 1000000 秒。");
     }
     return lines.join("\n") + "\n";
   }
 
-  function parseCsv(bytes, variable) {
-    const rows = new TextDecoder().decode(bytes).trim().split(/\r?\n/);
-    const headers = rows[0].split(",").map(s => s.trim().replace(/^"|"$/g, ""));
-    const time = headers.indexOf("time"), value = headers.indexOf(variable);
-    if (time < 0 || value < 0) throw new Error("模擬結果缺少時間或電容電壓欄位。");
+  function parseCsv(bytes) {
+    const text = new TextDecoder().decode(bytes);
+    const rows = [];
+    let fields = [], field = "", quoted = false, closedQuote = false;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (quoted) {
+        if (char === '"' && text[i + 1] === '"') { field += '"'; i++; }
+        else if (char === '"') { quoted = false; closedQuote = true; }
+        else field += char;
+      } else if (char === '"' && field === "" && !closedQuote) quoted = true;
+      else if (char === "," || char === "\n" || char === "\r") {
+        fields.push(field); field = ""; closedQuote = false;
+        if (char !== ",") {
+          rows.push(fields); fields = [];
+          if (char === "\r" && text[i + 1] === "\n") i++;
+        }
+      } else if (closedQuote || char === '"') throw new Error("模擬結果 CSV 格式無效。");
+      else field += char;
+    }
+    if (quoted) throw new Error("模擬結果 CSV 引號未結束。");
+    if (field !== "" || fields.length || closedQuote) { fields.push(field); rows.push(fields); }
     if (rows.length < 2 || rows.length > 10001) throw new Error("模擬結果點數無效。");
-    return rows.slice(1).map(row => {
-      const fields = row.split(",");
-      const t = Number(fields[time]), v = Number(fields[value]);
-      if (fields[time] === undefined || fields[value] === undefined || !Number.isFinite(t) || !Number.isFinite(v))
-        throw new Error("模擬結果包含無效數值。");
-      return [t, v];
-    });
+    const headers = rows.shift();
+    if (headers.length > 2000 || new Set(headers).size !== headers.length || headers.some(name => !name))
+      throw new Error("模擬結果變數名稱無效或超出數量上限。");
+    const timeIndex = headers.indexOf("time");
+    if (timeIndex < 0) throw new Error("模擬結果缺少時間欄位。");
+    const columns = headers.map(() => []);
+    for (const row of rows) {
+      if (row.length !== headers.length) throw new Error("模擬結果欄位數量不一致。");
+      row.forEach((value, i) => {
+        const number = Number(value);
+        if (!value.trim() || !Number.isFinite(number)) throw new Error(`模擬結果 ${headers[i]} 包含無效數值。`);
+        columns[i].push(number);
+      });
+    }
+    return {names: headers, columns, timeIndex};
   }
 
   async function simulate(data, status) {
     const code = generate(data, true);
-    const variable = data.components.find(part => part.type === "capacitor").id + ".v";
     const worker = new Worker(new URL("./vendor/omc_worker.js", document.baseURI), {type: "module"});
     let timer;
     try {
@@ -111,11 +134,11 @@ const CircuitEngine = (() => {
         worker.postMessage({cmd: "init"});
       });
       status("OpenModelica 模擬完成");
-      return {points: parseCsv(response, variable), variable};
+      return parseCsv(response);
     } finally {
       clearTimeout(timer);
       worker.terminate();
     }
   }
-  return {generate, simulate};
+  return {generate, simulate, parseCsv};
 })();

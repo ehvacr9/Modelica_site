@@ -13,6 +13,7 @@ let pending = null;
 let revision = 0;
 let codeTimer;
 let noticeTimer;
+let simulationResult = null;
 
 function notify(text, error = false) {
   const box = $("message");
@@ -33,9 +34,10 @@ async function post(path, body) {
 
 function invalidate() {
   revision++;
-  $("plot-empty").hidden = false;
-  $("plot-area").hidden = true;
+  clearResults();
   $("result-state").textContent = "尚未執行";
+  $("compiler-status").textContent = "模擬時載入 OpenModelica";
+  $("compiler-status").classList.remove("error");
   clearTimeout(codeTimer);
   const current = revision;
   codeTimer = setTimeout(async () => {
@@ -47,6 +49,45 @@ function invalidate() {
     }
   }, 100);
 }
+
+function clearResults() {
+  simulationResult = null;
+  $("plot-empty").hidden = false;
+  $("plot-area").hidden = true;
+  $("plot").replaceChildren();
+  $("workspace-variables").replaceChildren();
+  $("workspace-empty").hidden = false;
+  $("workspace-count").textContent = "0";
+}
+
+function activateTab(tabId, choices) {
+  for (const [id, panel] of choices) {
+    const active = id === tabId;
+    $(id).classList.toggle("active", active);
+    $(id).setAttribute("aria-selected", String(active));
+    $(id).tabIndex = active ? 0 : -1;
+    $(panel).hidden = !active;
+  }
+}
+
+const primaryTabs = [["tab-modeling", "modeling"], ["tab-plotting", "plotting"]];
+const viewTabs = [["tab-model-view", "model-view"], ["tab-code-view", "code-view"]];
+function wireTabs(choices) {
+  for (const [id] of choices) {
+    $(id).addEventListener("click", () => activateTab(id, choices));
+    $(id).addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const index = choices.findIndex(([name]) => name === id);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? choices.length - 1 :
+        (index + (event.key === "ArrowRight" ? 1 : -1) + choices.length) % choices.length;
+      activateTab(choices[next][0], choices);
+      $(choices[next][0]).focus();
+    });
+  }
+}
+wireTabs(primaryTabs);
+wireTabs(viewTabs);
 
 function portPosition(endpoint) {
   const item = model.components.find(part => part.id === endpoint.id);
@@ -251,12 +292,49 @@ function drawPlot(result) {
   const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
   line.setAttribute("points", result.points.map(([t, v]) => `${(t - minT) / spanT * 590 + 5},${180 - (v - minV) / spanV * 170}`).join(" "));
   line.setAttribute("fill", "none"); line.setAttribute("stroke", "#607bf3"); line.setAttribute("stroke-width", "2.5"); line.setAttribute("vector-effect", "non-scaling-stroke"); svg.append(line);
-  $("plot-label").textContent = `${result.variable}  ·  電壓 (V)　 ${minV.toPrecision(4)} – ${maxV.toPrecision(4)}`;
+  $("plot-label").textContent = `${result.variable}　 ${minV.toPrecision(4)} – ${maxV.toPrecision(4)}`;
   $("plot-range").replaceChildren();
   for (const text of [`${minT.toPrecision(3)} s`, `時間 (s)`, `${maxT.toPrecision(3)} s`]) {
     const span = document.createElement("span"); span.textContent = text; $("plot-range").append(span);
   }
-  $("plot-empty").hidden = true; $("plot-area").hidden = false; $("result-state").textContent = "模擬完成";
+  $("plot-empty").hidden = true; $("plot-area").hidden = false;
+}
+
+function showVariable(index, openPlotting = true) {
+  if (!simulationResult) return;
+  const times = simulationResult.columns[simulationResult.timeIndex];
+  const values = simulationResult.columns[index];
+  document.querySelectorAll(".workspace-variable").forEach(button => {
+    button.classList.toggle("active", Number(button.dataset.index) === index);
+    button.setAttribute("aria-pressed", String(Number(button.dataset.index) === index));
+  });
+  drawPlot({variable: simulationResult.names[index], points: times.map((time, i) => [time, values[i]])});
+  if (openPlotting) activateTab("tab-plotting", primaryTabs);
+}
+
+function showResults(result) {
+  simulationResult = result;
+  const body = $("workspace-variables");
+  body.replaceChildren();
+  result.names.forEach((name, index) => {
+    const row = document.createElement("tr"), nameCell = document.createElement("td"), valueCell = document.createElement("td");
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "workspace-variable"; button.dataset.index = String(index);
+    button.textContent = name; button.title = `繪製 ${name}`; button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => showVariable(index));
+    nameCell.append(button);
+    const value = result.columns[index].at(-1);
+    valueCell.textContent = Number(value.toPrecision(7)).toString();
+    valueCell.title = String(value);
+    row.append(nameCell, valueCell); body.append(row);
+  });
+  $("workspace-count").textContent = String(result.names.length);
+  $("workspace-empty").hidden = true;
+  const capacitor = model.components.find(item => item.type === "capacitor");
+  const preferred = capacitor ? result.names.indexOf(`${capacitor.id}.v`) : -1;
+  const index = preferred >= 0 ? preferred : result.names.findIndex((_, i) => i !== result.timeIndex);
+  if (index >= 0) showVariable(index, false);
+  $("result-state").textContent = "模擬完成";
 }
 
 for (const [type, def] of Object.entries(definitions)) {
@@ -266,7 +344,10 @@ for (const [type, def] of Object.entries(definitions)) {
   const text = document.createElement("span"), name = document.createElement("strong"), english = document.createElement("small");
   name.textContent = def.name; english.textContent = def.english; text.append(name, english); button.append(icon, text);
   button.addEventListener("dragstart", event => event.dataTransfer.setData("text/plain", type));
-  button.addEventListener("click", () => addComponent(type, 30 + model.components.length * 20, 30 + model.components.length * 20));
+  button.addEventListener("click", () => {
+    activateTab("tab-modeling", primaryTabs); activateTab("tab-model-view", viewTabs);
+    addComponent(type, 30 + model.components.length * 20, 30 + model.components.length * 20);
+  });
   $("library").append(button);
 }
 $("canvas").addEventListener("dragover", event => event.preventDefault());
@@ -301,6 +382,7 @@ $("clear").addEventListener("click", () => {
 });
 $("sample").addEventListener("click", () => {
   if (model.components.length && !confirm("載入範例會取代目前的模型，確定繼續？")) return;
+  activateTab("tab-modeling", primaryTabs); activateTab("tab-model-view", viewTabs);
   loadSample();
 });
 $("stop-time").addEventListener("change", event => {
@@ -312,11 +394,12 @@ $("stop-time").addEventListener("change", event => {
 });
 $("simulate").addEventListener("click", async () => {
   const button = $("simulate"), current = revision;
+  clearResults();
   $("compiler-status").classList.remove("error");
   button.disabled = true; button.textContent = "模擬中…"; $("result-state").textContent = "執行中";
   try {
     const result = await post("/api/simulate", model);
-    if (current === revision) { drawPlot(result); notify("OpenModelica 模擬完成。"); }
+    if (current === revision) { showResults(result); notify("OpenModelica 模擬完成；請在 Workspace 選擇變數，或切換到 Plotting。"); }
     else notify("模型已變更，已忽略舊的模擬結果。");
   } catch (error) {
     if (current === revision) $("result-state").textContent = "模擬失敗";

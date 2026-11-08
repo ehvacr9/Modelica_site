@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpenModelica Studio · 雛形</title>
   <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./workspace.css">
 </head>
 <body>
   <header class="topbar">
@@ -17,15 +18,34 @@
       <h2>元件庫</h2><p class="muted">拖曳元件至畫布，或點擊新增。</p>
       <div class="library-title">⌁　電氣元件 <span>ANALOG</span></div>
       <div id="library" class="library"></div>
-      <div class="guide"><div class="guide-icon">✦</div><strong>快速開始</strong><p>拖曳元件至畫布。依序點擊兩個端點建立連線，選取元件後可編輯參數。</p><span>TIP　Delete 可刪除選取元件</span></div>
+      <section class="workspace-panel" aria-label="Workspace 變數">
+        <div class="workspace-title"><div><div class="section-label">SIMULATION DATA</div><h2>Workspace</h2></div><span id="workspace-count" class="pill">0</span></div>
+        <p class="muted">點擊變數繪圖；Value 為結束時的值。</p>
+        <div class="workspace-table-wrap"><table class="workspace-table"><thead><tr><th scope="col">Name</th><th scope="col">Value</th></tr></thead><tbody id="workspace-variables"></tbody></table><p id="workspace-empty" class="workspace-empty">模擬完成後顯示變數</p></div>
+      </section>
     </aside>
     <section class="workspace">
-      <div class="workspace-heading"><div><div class="eyebrow">WORKSPACE / ELECTRICAL</div><h1>電路建模工作區 <span>雛形</span></h1><p>建立你的第一個物理系統模型</p></div><div class="canvas-tools"><button id="delete" class="icon-button" title="刪除選取元件">⌫</button><button id="clear" class="button subtle">清空畫布</button></div></div>
-      <div class="canvas-container"><div class="canvas-header"><span><i></i> MODEL CANVAS</span><span id="count">0 個元件</span></div><div id="canvas" class="canvas" aria-label="電路建模畫布"><svg id="wires" aria-label="連線"></svg><div id="empty" class="empty">從左側新增元件，開始建立模型</div></div><div class="canvas-footer"><span>●　點擊端點開始連線</span><span id="wire-hint">READY</span></div></div>
-      <div class="bottom">
-        <section class="panel result-panel"><div class="panel-heading"><div><div class="eyebrow">SIMULATION RESULT</div><h2>模擬結果</h2></div><span class="pill" id="result-state">尚未執行</span></div><div id="plot-empty" class="plot-empty"><span>⌁</span><strong>準備好進行模擬</strong><p>完成模型後，點擊右上角執行模擬</p></div><div id="plot-area" hidden><div id="plot-label"></div><svg id="plot" viewBox="0 0 600 190" preserveAspectRatio="none" aria-label="電容電壓隨時間變化圖"></svg><div id="plot-range"></div></div></section>
-        <section class="panel code-panel"><div class="panel-heading"><div><div class="eyebrow">GENERATED CODE</div><h2>Modelica 程式碼</h2></div><button id="copy" class="text-button">複製</button></div><pre id="code">正在產生程式碼…</pre></section>
+      <div class="workspace-heading"><div><div class="eyebrow">WORKSPACE / ELECTRICAL</div><h1>電路建模工作區 <span>雛形</span></h1><p>建立、模擬與檢視物理系統模型</p></div><span class="pill" id="result-state" role="status">尚未執行</span></div>
+      <div class="primary-tabs" role="tablist" aria-label="工作區">
+        <button id="tab-modeling" class="tab active" role="tab" aria-selected="true" aria-controls="modeling">Modeling</button>
+        <button id="tab-plotting" class="tab" role="tab" aria-selected="false" aria-controls="plotting" tabindex="-1">Plotting</button>
       </div>
+      <section id="modeling" role="tabpanel" aria-labelledby="tab-modeling">
+        <div class="modeling-toolbar">
+          <div class="view-tabs" role="tablist" aria-label="Modeling 視圖">
+            <button id="tab-model-view" class="view-tab active" role="tab" aria-selected="true" aria-controls="model-view">Model View</button>
+            <button id="tab-code-view" class="view-tab" role="tab" aria-selected="false" aria-controls="code-view" tabindex="-1">Code View</button>
+          </div>
+          <div class="canvas-tools"><button id="delete" class="icon-button" title="刪除選取元件">⌫</button><button id="clear" class="button subtle">清空畫布</button></div>
+        </div>
+        <div id="model-view" role="tabpanel" aria-labelledby="tab-model-view"><div class="canvas-container"><div class="canvas-header"><span><i></i> MODEL CANVAS</span><span id="count">0 個元件</span></div><div id="canvas" class="canvas" aria-label="電路建模畫布"><svg id="wires" aria-label="連線"></svg><div id="empty" class="empty">從左側新增元件，開始建立模型</div></div><div class="canvas-footer"><span>●　點擊端點開始連線</span><span id="wire-hint">READY</span></div></div></div>
+        <div id="code-view" class="code-view" role="tabpanel" aria-labelledby="tab-code-view" hidden><div class="code-header"><div><div class="eyebrow">GENERATED CODE</div><h2>Modelica 程式碼 <span class="readonly">唯讀</span></h2></div><button id="copy" class="button subtle">複製</button></div><pre id="code">正在產生程式碼…</pre></div>
+      </section>
+      <section id="plotting" class="plotting-panel" role="tabpanel" aria-labelledby="tab-plotting" hidden>
+        <div class="panel-heading"><div><div class="eyebrow">SIMULATION RESULT</div><h2>Plotting 繪圖區</h2></div></div>
+        <div id="plot-empty" class="plot-empty"><span>⌁</span><strong>尚無繪圖資料</strong><p>完成模擬後，從左側 Workspace 選擇變數。</p></div>
+        <div id="plot-area" hidden><div id="plot-label"></div><svg id="plot" viewBox="0 0 600 190" preserveAspectRatio="none" aria-label="選取變數隨時間變化圖"></svg><div id="plot-range"></div></div>
+      </section>
     </section>
     <aside class="inspector"><div class="section-label">PROPERTIES</div><h2>屬性設定</h2><p class="muted">選取畫布中的元件以編輯。</p><div id="properties" class="properties-empty"><span>◇</span><strong>尚未選取元件</strong><p>點擊元件查看其屬性</p></div><div class="simulation-settings"><div class="section-label">SIMULATION</div><h3>模擬設定</h3><label for="stop-time">結束時間 <span>秒</span></label><input id="stop-time" type="number" min="0.000001" step="any" value="1"><p>使用 OpenModelica 執行暫態模擬。</p></div></aside>
   </main>

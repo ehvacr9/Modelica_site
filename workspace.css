@@ -1,0 +1,34 @@
+[hidden] { display: none !important; }
+.sidebar { display: flex; flex-direction: column; min-width: 0; }
+.workspace-panel { border-top: 1px solid #edf0f5; margin-top: 24px; padding-top: 18px; min-height: 220px; }
+.workspace-title { display: flex; align-items: center; justify-content: space-between; }
+.workspace-table-wrap { max-height: 300px; overflow: auto; margin-top: 12px; border: 1px solid #edf0f5; border-radius: 7px; }
+.workspace-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+.workspace-table th { position: sticky; top: 0; text-align: left; background: #f5f7fb; color: #78889d; padding: 8px; z-index: 1; }
+.workspace-table th:first-child { width: 62%; }
+.workspace-table td { border-top: 1px solid #edf0f5; padding: 7px 8px; color: #526174; overflow: hidden; text-overflow: ellipsis; }
+.workspace-table td:first-child { padding: 0; }
+.workspace-variable { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 8px; color: #5268c4; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-variable:hover, .workspace-variable.active { background: #edf2ff; color: #344fc4; }
+.workspace-empty { padding: 18px 8px; text-align: center; font-size: 11px; color: #9aa8b8; }
+.primary-tabs { display: flex; gap: 20px; border-bottom: 1px solid #dfe5ef; margin-bottom: 18px; }
+.tab, .view-tab { border: 0; background: transparent; color: #8796aa; font-weight: 700; cursor: pointer; }
+.tab { padding: 12px 4px; border-bottom: 2px solid transparent; }
+.tab.active { color: #4d68e5; border-bottom-color: #536eef; }
+.modeling-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.view-tabs { display: flex; gap: 3px; padding: 4px; border-radius: 8px; background: #e9edf5; }
+.view-tab { padding: 8px 13px; border-radius: 6px; font-size: 12px; }
+.view-tab.active { background: white; color: #5069df; box-shadow: 0 1px 5px #253c5b12; }
+.code-view, .plotting-panel { background: white; border: 1px solid #e5eaf2; border-radius: 10px; min-height: 490px; padding: 20px; }
+.code-header { display: flex; justify-content: space-between; align-items: center; }
+.readonly { font-size: 10px; font-weight: 500; color: #94a1b3; }
+.code-view pre { height: 390px; font-size: 12px; line-height: 1.8; }
+.plotting-panel .plot-empty { padding-top: 120px; }
+.plotting-panel #plot-area { padding-top: 30px; }
+.plotting-panel #plot { height: 310px; }
+.plotting-panel #plot-label { font-size: 12px; font-weight: 600; }
+@media(max-width: 700px) {
+  .workspace-panel { margin-top: 16px; }
+  .workspace-table-wrap { max-height: 180px; }
+  .plotting-panel #plot { height: 220px; }
+}

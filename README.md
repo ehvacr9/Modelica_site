@@ -6,7 +6,13 @@
 
 使用 OpenModelica 官方 Playground 的瀏覽器版 WebAssembly 編譯器，在瀏覽器本機執行模型，而非呼叫 OMWebBook 的遠端模擬 API。模型及其模擬結果不會由本網站上傳到伺服器。首次執行須下載約 75 MB 編譯器與 Modelica Standard Library；函式庫由 OpenModelica 指定的來源下載，因此需要網路。載入和模擬速度取決於網路、瀏覽器及電腦效能。
 
-此版本的 OpenModelica 是開發版，瀏覽器的支援能力與官方資源可用性可能改變；若資源下載或模擬失敗，介面會顯示錯誤。需使用支援 WebAssembly 與 module worker 的現代瀏覽器。結果圖目前顯示第一個電容的電壓；複雜電路、多物理領域與完整 Modelica 編輯尚不支援。
+此版本的 OpenModelica 是開發版，瀏覽器的支援能力與官方資源可用性可能改變；若資源下載或模擬失敗，介面會顯示錯誤。需使用支援 WebAssembly 與 module worker 的現代瀏覽器。複雜電路、多物理領域與完整 Modelica 編輯尚不支援。
+
+## 工作區
+
+- **Modeling → Model View**：編輯電路與參數；**Code View**：查看、複製產生的唯讀 Modelica 程式碼。
+- 模擬完成後，左側 **Workspace** 的 Name 與 Value 顯示結果中每個變數的名稱與最後一筆數值。若修改模型或模擬設定，舊結果會清除，需重新模擬。
+- 選取 Workspace 中的變數會切換到 **Plotting** 並顯示該變數隨時間的曲線；也可直接切換 Plotting。預設圖表為第一個電容的電壓，若沒有電容則為第一個非時間變數。
 
 ## 本機預覽
 
@@ -17,6 +23,8 @@ py -m http.server 8000 --bind 127.0.0.1
 ```
 
 使用瀏覽器開啟 <http://127.0.0.1:8000/>。不要直接以 `file://` 開啟，因為瀏覽器會限制 worker 與資源載入。按 `Ctrl+C` 停止。
+
+開啟 <http://127.0.0.1:8000/tests/engine.html> 可執行結果解析與模型驗證測試；實際模擬仍需網路下載 Modelica 函式庫。
 
 ## GitHub Pages
 
