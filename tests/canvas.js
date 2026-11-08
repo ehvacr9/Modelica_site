@@ -9,6 +9,53 @@ document.getElementById("app").addEventListener("load", async event => {
   const test = (name, fn) => tests.push([name, fn]);
   const near = (a, b) => Math.abs(a - b) < 0.001;
 
+  test("layout confirmation preserves data or arranges without changing topology and results", () => {
+    app.loadSample();
+    app.showResults({names: ["time", "capacitor1.v"], columns: [[0, 1], [0, 5]], timeIndex: 0});
+    const before = app.eval("JSON.stringify(model)"), code = app.eval("CircuitEngine.generate(model)");
+    let asked = false;
+    app.confirm = () => { asked = true; return false; };
+    $("optimize-layout").click();
+    assert(asked && app.eval("JSON.stringify(model)") === before && $("workspace-count").textContent === "2",
+      "取消時模型、手動線路與結果不得變更");
+    app.confirm = () => true;
+    $("optimize-layout").click();
+    const result = app.eval("model"), router = WireRouter.create(result.components, result.wires);
+    assert(result.components.find(p => p.type === "resistor").rotation === 270, "電阻應水平");
+    assert(result.components.find(p => p.type === "ground").y > result.components.find(p => p.type === "voltage").y,
+      "接地應位於電路下方");
+    assert(result.wires.every((wire, i) => !wire.route && router.route(i)), "線路應重新繞線");
+    assert(result.wires[3].branch.parent === 2 && doc.querySelector(".wire-junction"), "分支接點應保留");
+    assert(app.eval("CircuitEngine.generate(model)") === code && $("workspace-count").textContent === "2",
+      "排版不得更改電路或結果");
+    assert($("wire-warning").hidden, "範例不應有繞線警告");
+    app.loadSample();
+  });
+  test("layout groups disconnected circuits and avoids component overlap", () => {
+    const components = [
+      {id: "v", type: "voltage"}, {id: "r", type: "resistor"}, {id: "g", type: "ground"},
+      {id: "c", type: "capacitor"}, {id: "r2", type: "resistor"}, {id: "g2", type: "ground"}
+    ];
+    const wire = (a, b) => ({from: {id: a, port: "p"}, to: {id: b, port: "p"}});
+    const parts = app.eval("CircuitLayout").arrange(components, [wire("v", "r"), wire("v", "g"), wire("c", "r2"), wire("r2", "g2")]);
+    for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++)
+      assert(Math.abs(parts[i].x - parts[j].x) >= 120 || Math.abs(parts[i].y - parts[j].y) >= 72, "元件不可重疊");
+    assert(parts.find(p => p.id === "c").y > parts.find(p => p.id === "g").y, "不同電路應分開");
+  });
+  test("layout failure leaves all model data untouched", () => {
+    app.loadSample();
+    app.showResults({names: ["time", "capacitor1.v"], columns: [[0, 1], [0, 5]], timeIndex: 0});
+    const before = app.eval("JSON.stringify(model)");
+    app.confirm = () => true;
+    const router = app.eval("WireRouter"), original = router.create;
+    try {
+      router.create = () => ({route: () => null});
+      $("optimize-layout").click();
+      assert(app.eval("JSON.stringify(model)") === before && $("workspace-count").textContent === "2",
+        "繞線失敗不得更改原模型或模擬結果");
+      assert($("message").textContent.includes("原布局及手動線路未變更"), "應明確告知排版失敗");
+    } finally { router.create = original; }
+  });
   test("sample layout has a single ground junction and no routing warnings", () => {
     assert($("wire-warning").hidden, "範例不應有繞線警告");
     const dots = [...$("wires").querySelectorAll(".wire-junction")];
@@ -269,6 +316,8 @@ document.getElementById("app").addEventListener("load", async event => {
     assert($("message").textContent.includes("手動線路格式或座標無效"), "錯誤手動線路應被拒絕");
     assert($("wires").querySelector("path").getAttribute("d").includes("132 100"), "匯入失敗不得更改原模型");
     app.loadSample();
+    app.confirm = () => true;
+    $("optimize-layout").click();
     const withBranch = app.eval("JSON.parse(JSON.stringify(model))");
     await importModel(withBranch);
     assert(app.eval("model.wires[3].branch.parent") === 2 && $("wires").querySelector(".wire-junction"),

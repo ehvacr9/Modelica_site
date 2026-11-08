@@ -23,7 +23,7 @@
 .tab { padding: 12px 4px; border-bottom: 2px solid transparent; }
 .tab.active { color: #4d68e5; border-bottom-color: #536eef; }
 .modeling-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
-.canvas-navigation { display: flex; align-items: center; gap: 6px; }
+.canvas-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .canvas-navigation output { min-width: 46px; text-align: center; color: #66778d; font-size: 12px; }
 .canvas { touch-action: none; cursor: grab; }
 .canvas.panning { cursor: grabbing; }
