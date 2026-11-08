@@ -209,12 +209,13 @@ function drawWires() {
   });
   const geometry = WireRouter.crossings(model.wires, routes);
   const ns = "http://www.w3.org/2000/svg";
-  function pathData(route, index) {
+  function pathData(route, index, firstSegment = 0) {
     let data = `M ${route[0].x} ${route[0].y}`;
     for (let i = 1; i < route.length; i++) {
       const a = route[i - 1], b = route[i];
       const direction = Math.sign(b.x - a.x);
-      const jumps = [...new Set(geometry.bridges.get(`${index}:${i - 1}`) || [])]
+      const jumps = [...new Set(geometry.bridges.get(`${index}:${firstSegment + i - 1}`) || [])]
+        .filter(x => x > Math.min(a.x, b.x) && x < Math.max(a.x, b.x))
         .sort((x, y) => direction * (x - y));
       for (const x of jumps) {
         data += ` L ${x - direction * 5} ${a.y} Q ${x} ${a.y - 10} ${x + direction * 5} ${a.y}`;
@@ -223,20 +224,46 @@ function drawWires() {
     }
     return data;
   }
+  const hitGroups = [];
   for (const [index, wire] of model.wires.entries()) {
     const a = portPosition(wire.from), b = portPosition(wire.to);
     if (!a || !b) continue;
     const path = document.createElementNS(ns, "path");
     const points = routes[index];
     if (!points) failed.push(`${wire.from.id}.${wire.from.port} ↔ ${wire.to.id}.${wire.to.port}`);
-    const route = points || [a, {x: (a.x + b.x) / 2, y: a.y}, {x: (a.x + b.x) / 2, y: b.y}, b];
+    const branchEnd = wire.branch && routes[wire.branch.parent] &&
+      WireRouter.pointAt(routes[wire.branch.parent], wire.branch.fraction);
+    if (!points && wire.branch && !branchEnd) continue;
+    const end = branchEnd || b;
+    const route = points || [a, {x: (a.x + end.x) / 2, y: a.y}, {x: (a.x + end.x) / 2, y: end.y}, end];
     path.setAttribute("d", pathData(route, index));
     path.setAttribute("class", points ? "wire" : "wire wire-unrouted");
     const title = document.createElementNS(ns, "title");
     title.textContent = "拖曳線段調整位置；點擊後確認是否刪除連線";
     path.append(title);
+    const hitGroup = document.createElementNS(ns, "g");
+    const hitTitle = document.createElementNS(ns, "title");
+    hitTitle.textContent = title.textContent;
+    hitGroup.append(hitTitle);
+    for (let i = 1; i < route.length; i++) {
+      const start = route[i - 1], end = route[i];
+      const horizontal = start.y === end.y;
+      const axis = horizontal ? "x" : "y";
+      const cuts = geometry.junctions.filter(p =>
+        (horizontal ? p.y === start.y : p.x === start.x) &&
+        p[axis] > Math.min(start[axis], end[axis]) && p[axis] < Math.max(start[axis], end[axis]))
+        .sort((a, b) => Math.sign(end[axis] - start[axis]) * (a[axis] - b[axis]));
+      const pieces = [start, ...cuts, end];
+      for (let j = 1; j < pieces.length; j++) {
+        const hit = document.createElementNS(ns, "path");
+        hit.setAttribute("d", pathData([pieces[j - 1], pieces[j]], index, i - 1));
+        hit.setAttribute("class", "wire-hit");
+        hitGroup.append(hit);
+      }
+    }
+    hitGroups.push(hitGroup);
     let dragged = false;
-    if (points) path.addEventListener("pointerdown", event => {
+    const pointerDown = event => {
       if (event.button !== 0) return;
       event.stopPropagation();
       if (pending) return;
@@ -252,12 +279,14 @@ function drawWires() {
       const horizontal = points[segment].y === points[segment + 1].y;
       let candidate = null;
       dragged = false;
-      path.setPointerCapture(event.pointerId);
+      const target = event.currentTarget;
+      target.setPointerCapture(event.pointerId);
       function move(e) {
         if (e.pointerId !== event.pointerId) return;
         const delta = horizontal ? (e.clientY - event.clientY) / view.scale : (e.clientX - event.clientX) / view.scale;
         if (Math.abs(delta * view.scale) <= 3 && !dragged) return;
         dragged = true;
+        hitGroup.style.opacity = "0";
         candidate = WireRouter.shiftSegment(points, segment, delta);
         const valid = candidate && router.validManual(index, candidate);
         path.classList.toggle("wire-drag-invalid", !valid);
@@ -265,9 +294,9 @@ function drawWires() {
       }
       function end(e) {
         if (e.pointerId !== event.pointerId) return;
-        path.removeEventListener("pointermove", move);
-        path.removeEventListener("pointerup", end);
-        path.removeEventListener("pointercancel", end);
+        target.removeEventListener("pointermove", move);
+        target.removeEventListener("pointerup", end);
+        target.removeEventListener("pointercancel", end);
         if (dragged) {
           if (e.type !== "pointercancel" && candidate && router.validManual(index, candidate)) {
             for (const child of model.wires) {
@@ -286,11 +315,11 @@ function drawWires() {
           drawWires();
         }
       }
-      path.addEventListener("pointermove", move);
-      path.addEventListener("pointerup", end);
-      path.addEventListener("pointercancel", end);
-    });
-    path.addEventListener("click", event => {
+      target.addEventListener("pointermove", move);
+      target.addEventListener("pointerup", end);
+      target.addEventListener("pointercancel", end);
+    };
+    const click = event => {
       event.stopPropagation();
       if (dragged) { dragged = false; return; }
       if (pending) {
@@ -307,7 +336,11 @@ function drawWires() {
       removeWires(removed);
       render();
       invalidate();
-    });
+    };
+    for (const target of [path, hitGroup]) {
+      if (points) target.addEventListener("pointerdown", pointerDown);
+      target.addEventListener("click", click);
+    }
     svg.append(path);
   }
   for (const [id, positions] of geometry.bridges) {
@@ -324,6 +357,7 @@ function drawWires() {
       }
     }
   }
+  svg.append(...hitGroups);
   for (const point of geometry.junctions) {
     const dot = document.createElementNS(ns, "circle");
     dot.setAttribute("cx", point.x); dot.setAttribute("cy", point.y); dot.setAttribute("r", "4");
@@ -331,7 +365,7 @@ function drawWires() {
     svg.append(dot);
   }
   const warnings = [];
-  if (failed.length) warnings.push(`無法繞開鄰近或重疊元件的連線：${failed.join("、")}。請移開元件。`);
+  if (failed.length) warnings.push(`連線無法繞開重疊元件或到達接點：${failed.join("、")}。請移開重疊元件。`);
   if (adjusted.length) warnings.push(`手動線路受元件位置影響，暫以自動繞線顯示：${adjusted.join("、")}。`);
   if (geometry.ambiguous) warnings.push("不同電氣網路的線段重疊，或跨線位置太靠近線段端點，請拖曳線段分開，以免誤認為連接。");
   $("wire-warning").hidden = !warnings.length;

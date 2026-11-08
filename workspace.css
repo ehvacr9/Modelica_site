@@ -41,6 +41,10 @@
 .rotation-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .wire.wire-unrouted { stroke: #d35c5c; stroke-dasharray: 6 4; }
 .wire { cursor: move; touch-action: none; }
+.wire, .wire:hover { pointer-events: none; stroke-width: 2.5; }
+.wire:not(.wire-unrouted):not(.wire-drag-invalid):hover { stroke: #7489df; }
+.wire-hit { fill: none; stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: move; touch-action: none; }
+.wire-hit:hover { stroke: #e07a78; stroke-width: 5; }
 .wire.wire-drag-invalid { stroke: #d35c5c; }
 .wire-junction { fill: #7489df; pointer-events: none; }
 .wire-bridge-halo, .wire-bridge { fill: none; pointer-events: none; }

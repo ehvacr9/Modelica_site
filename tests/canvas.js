@@ -63,6 +63,39 @@ document.getElementById("app").addEventListener("load", async event => {
       "接地線應接至回路下方的單一接點");
     assert(!$("wires").querySelector(".wire-bridge"), "範例線路不應相互跨越");
   });
+  test("wire hover targets stop at junctions and follow the rendered branch", () => {
+    app.loadSample();
+    const groups = $("wires").querySelectorAll("g");
+    const main = [...groups[2].querySelectorAll(".wire-hit")].map(path => path.getAttribute("d"));
+    const branch = [...groups[3].querySelectorAll(".wire-hit")].map(path => path.getAttribute("d"));
+    assert(main.includes("M 540 240 L 300 240") && main.includes("M 300 240 L 85 240"),
+      `主線命中區必須在接點分割：${main.join("; ")}`);
+    assert(branch.join("; ").includes("300 240"), "分支命中區應到達主線接點");
+    assert(app.eval("CircuitEngine.generate(model)").includes("connect(ground1.p, voltage1.n)"),
+      "分支須保留電氣連接");
+  });
+  test("routing adapts clearance to nearby components without crossing them", () => {
+    const components = [
+      {id: "a", x: 0, y: 0, rotation: 270}, {id: "b", x: 138, y: 0, rotation: 270},
+      {id: "c", x: 400, y: 0, rotation: 270}
+    ];
+    const wires = [{from: {id: "a", port: "n"}, to: {id: "c", port: "p"}}];
+    const router = WireRouter.create(components, wires), route = router.route(0);
+    assert(route && router.validManual(0, route), `應從狹窄間隙繞開元件：${JSON.stringify(route)}`);
+    assert(route[0].x === 120 && route.at(-1).x === 400, "線路必須連接真正的端點");
+  });
+  test("unroutable branch still points to its actual junction", () => {
+    app.loadSample();
+    app.eval("model.components.push({id:'block', type:'resistor', value:1, x:240, y:250, rotation:0})");
+    app.render();
+    const router = WireRouter.create(app.eval("model.components"), app.eval("model.wires"));
+    const parent = router.route(2), junction = WireRouter.pointAt(parent, app.eval("model.wires[3].branch.fraction"));
+    assert(!router.route(3), "被元件遮擋的端點不應假裝繞線成功");
+    const branch = $("wires").querySelectorAll(".wire")[3];
+    assert(branch.classList.contains("wire-unrouted") && branch.getAttribute("d").endsWith(`L ${junction.x} ${junction.y}`),
+      "無法繞線的分支必須指向主線接點，而非虛假的另一個元件端點");
+    app.loadSample();
+  });
   test("rotation updates both terminals and obstacle-avoiding routes", () => {
     const components = [{id: "a", x: 0, y: 0}, {id: "b", x: 500, y: 200}];
     const wires = [{from: {id: "a", port: "n"}, to: {id: "b", port: "p"}}];
@@ -109,7 +142,7 @@ document.getElementById("app").addEventListener("load", async event => {
     app.eval("model.wires.pop()");
     app.render();
     doc.querySelector('[aria-label="連接 ground1.p"]').click();
-    const wire = $("wires").querySelectorAll(".wire")[2];
+    const wire = $("wires").querySelectorAll("g")[2].querySelectorAll(".wire-hit")[1];
     const point = new app.DOMPoint(300, 240).matrixTransform(wire.getScreenCTM());
     wire.dispatchEvent(new app.MouseEvent("click", {bubbles: true, clientX: point.x, clientY: point.y}));
     const branch = app.eval("model.wires[3]");
@@ -117,10 +150,12 @@ document.getElementById("app").addEventListener("load", async event => {
     const oldJunction = WireRouter.pointAt(branch ? app.eval("model.wires[2].route") : [], branch.branch.fraction);
     assert(Math.abs(oldJunction.x - 300) < 2 && near(oldJunction.y, 240), "接點應在點擊位置");
     assert(app.eval("CircuitEngine.generate(model)").includes("connect(ground1.p, capacitor1.n)"), "分支應產生電氣連接");
-    const main = $("wires").querySelectorAll(".wire")[2];
+    const main = $("wires").querySelectorAll("g")[2];
     main.setPointerCapture = () => {};
     const start = new app.DOMPoint(350, 240).matrixTransform(main.getScreenCTM());
-    for (const [type, y] of [["pointerdown", start.y], ["pointermove", start.y - 20], ["pointerup", start.y - 20]])
+    const hit = [...main.querySelectorAll(".wire-hit")].find(path => path.getAttribute("d").includes("540 240 L 300 240"));
+    hit.dispatchEvent(new app.PointerEvent("pointerdown", {bubbles: true, button: 0, pointerId: 7, clientX: start.x, clientY: start.y}));
+    for (const [type, y] of [["pointermove", start.y - 20], ["pointerup", start.y - 20]])
       main.dispatchEvent(new app.PointerEvent(type, {bubbles: true, button: 0, pointerId: 7, clientX: start.x, clientY: y}));
     const updated = app.eval("model.wires");
     const router = WireRouter.create(app.eval("model.components"), updated);

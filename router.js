@@ -174,17 +174,26 @@ const WireRouter = (() => {
   }
 
   function create(components, wires) {
+    let spacing = clearance;
+    for (let i = 0; i < components.length; i++) for (let j = i + 1; j < components.length; j++) {
+      const a = components[i], b = components[j];
+      const gapX = Math.max(a.x - (b.x + 120), b.x - (a.x + 120), 0);
+      const gapY = Math.max(a.y - (b.y + 72), b.y - (a.y + 72), 0);
+      const gap = Math.max(gapX, gapY);
+      if (gap > 0) spacing = Math.min(spacing, gap / 3);
+      else spacing = Math.min(spacing, 0.001);
+    }
     const parts = new Map(components.map(part => [part.id, part]));
     const obstacles = components.map(part => ({
-      id: part.id, left: part.x - clearance, right: part.x + 120 + clearance,
-      top: part.y - clearance, bottom: part.y + 72 + clearance
+      id: part.id, left: part.x - spacing, right: part.x + 120 + spacing,
+      top: part.y - spacing, bottom: part.y + 72 + spacing
     }));
     function endpoint(end) {
       const part = parts.get(end.id);
       if (!part) return null;
       const position = port(part, end.port);
       const point = {x: position.x, y: position.y};
-      return {point, stub: {x: point.x + position.dx * clearance, y: point.y + position.dy * clearance}, id: part.id};
+      return {point, stub: {x: point.x + position.dx * spacing, y: point.y + position.dy * spacing}, id: part.id};
     }
     const endpoints = wires.map(wire => [endpoint(wire.from), endpoint(wire.to)]);
     const cache = new Map();
@@ -321,8 +330,8 @@ const WireRouter = (() => {
           points.at(-1).x !== b.point.x || points.at(-1).y !== b.point.y) return false;
       const outward = (point, end) => (point.x - end.point.x) * (end.stub.x - end.point.x) +
         (point.y - end.point.y) * (end.stub.y - end.point.y);
-      if (outward(points[1], a) < clearance * clearance ||
-          (b.id !== null && outward(points.at(-2), b) < clearance * clearance)) return false;
+      if (outward(points[1], a) < spacing * spacing - 1e-9 ||
+          (b.id !== null && outward(points.at(-2), b) < spacing * spacing - 1e-9)) return false;
       return points.slice(1).every((point, i) => {
         const previous = points[i];
         if ((point.x !== previous.x && point.y !== previous.y) ||
