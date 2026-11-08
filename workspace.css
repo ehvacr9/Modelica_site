@@ -18,10 +18,18 @@
 .workspace-variable:hover, .workspace-variable.active { background: #edf2ff; color: #344fc4; }
 .workspace-empty { padding: 18px 8px; text-align: center; font-size: 11px; color: #9aa8b8; }
 .primary-tabs { display: flex; gap: 20px; border-bottom: 1px solid #dfe5ef; margin-bottom: 18px; }
+.primary-tabs .pill { margin-left: auto; align-self: center; }
 .tab, .view-tab { border: 0; background: transparent; color: #8796aa; font-weight: 700; cursor: pointer; }
 .tab { padding: 12px 4px; border-bottom: 2px solid transparent; }
 .tab.active { color: #4d68e5; border-bottom-color: #536eef; }
-.modeling-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 12px; }
+.modeling-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.canvas-navigation { display: flex; align-items: center; gap: 6px; }
+.canvas-navigation output { min-width: 46px; text-align: center; color: #66778d; font-size: 12px; }
+.canvas { touch-action: none; cursor: grab; }
+.canvas.panning { cursor: grabbing; }
+#canvas-world { position: absolute; inset: 0; transform-origin: 0 0; pointer-events: none; }
+#canvas-world .node { pointer-events: auto; }
+#canvas-world #wires { pointer-events: none; }
 .view-tabs { display: flex; width: fit-content; gap: 3px; margin-top: 12px; padding: 4px; border-radius: 8px; background: #e9edf5; }
 .view-tab { padding: 8px 13px; border-radius: 6px; font-size: 12px; }
 .view-tab.active { background: white; color: #5069df; box-shadow: 0 1px 5px #253c5b12; }

@@ -18,6 +18,8 @@ let selectedVariable = null;
 let replayTime = 0;
 let replayFrame = null;
 let replayLastFrame = null;
+const positionLimit = 1000000;
+const view = {x: 0, y: 0, scale: 1};
 
 function notify(text, error = false) {
   const box = $("message");
@@ -81,6 +83,7 @@ function activateTab(tabId, choices) {
     $("result-sidebar").hidden = tabId !== "tab-plotting";
     if (tabId !== "tab-plotting") pauseReplay();
   }
+  if (choices === viewTabs) $("canvas-navigation").hidden = tabId !== "tab-model-view";
 }
 
 const primaryTabs = [["tab-modeling", "modeling"], ["tab-plotting", "plotting"]];
@@ -101,6 +104,45 @@ function wireTabs(choices) {
 }
 wireTabs(primaryTabs);
 wireTabs(viewTabs);
+
+function updateView() {
+  $("canvas-world").style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+  $("zoom-level").textContent = `${Number((view.scale * 100).toPrecision(3))}%`;
+  $("canvas").style.backgroundSize = `${20 * view.scale}px ${20 * view.scale}px`;
+  $("canvas").style.backgroundPosition = `${view.x}px ${view.y}px`;
+}
+
+function canvasPoint(clientX, clientY) {
+  const rect = $("canvas").getBoundingClientRect();
+  return {x: (clientX - rect.left - view.x) / view.scale, y: (clientY - rect.top - view.y) / view.scale};
+}
+
+function zoomAt(scale, x, y) {
+  const next = Math.max(0.00001, Math.min(4, scale));
+  const ratio = next / view.scale;
+  view.x = x - (x - view.x) * ratio;
+  view.y = y - (y - view.y) * ratio;
+  view.scale = next;
+  updateView();
+}
+
+function fitView() {
+  const canvas = $("canvas");
+  if (!model.components.length) {
+    view.x = 0; view.y = 0; view.scale = 1;
+  } else {
+    const minX = Math.min(...model.components.map(item => item.x));
+    const minY = Math.min(...model.components.map(item => item.y));
+    const maxX = Math.max(...model.components.map(item => item.x + 120));
+    const maxY = Math.max(...model.components.map(item => item.y + 72));
+    const margin = 30;
+    view.scale = Math.min(2, Math.max(0.00001, (canvas.clientWidth - 2 * margin) / (maxX - minX)),
+      Math.max(0.00001, (canvas.clientHeight - 2 * margin) / (maxY - minY)));
+    view.x = (canvas.clientWidth - (maxX - minX) * view.scale) / 2 - minX * view.scale;
+    view.y = (canvas.clientHeight - (maxY - minY) * view.scale) / 2 - minY * view.scale;
+  }
+  updateView();
+}
 
 function portPosition(endpoint) {
   const item = model.components.find(part => part.id === endpoint.id);
@@ -195,14 +237,18 @@ function makeNode(item) {
     function move(e) {
       const dx = e.clientX - startX, dy = e.clientY - startY;
       if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
-      item.x = Math.max(8, Math.min($("canvas").clientWidth - 128, x + dx));
-      item.y = Math.max(8, Math.min($("canvas").clientHeight - 80, y + dy));
+      if (!moved) return;
+      item.x = Math.max(-positionLimit, Math.min(positionLimit, x + dx / view.scale));
+      item.y = Math.max(-positionLimit, Math.min(positionLimit, y + dy / view.scale));
       node.style.left = item.x + "px";
       node.style.top = item.y + "px";
       drawWires();
     }
     function end() {
       node.removeEventListener("pointermove", move);
+      node.removeEventListener("pointerup", end);
+      node.removeEventListener("pointercancel", end);
+      if (Math.abs(item.x) === positionLimit || Math.abs(item.y) === positionLimit) notify("元件已達畫布座標上限。", true);
       if (moved) invalidate();
     }
   });
@@ -246,7 +292,7 @@ function renderProperties() {
 }
 
 function render() {
-  const canvas = $("canvas");
+  const canvas = $("canvas-world");
   canvas.querySelectorAll(".node").forEach(node => node.remove());
   for (const item of model.components) canvas.append(makeNode(item));
   $("empty").hidden = model.components.length > 0;
@@ -258,7 +304,11 @@ function render() {
 function addComponent(type, x, y) {
   let index = 1;
   while (model.components.some(item => item.id === type + index)) index++;
-  const component = {id: type + index, type, x: Math.max(8, Math.min($("canvas").clientWidth - 128, x)), y: Math.max(8, Math.min($("canvas").clientHeight - 80, y))};
+  if (Math.abs(x) > positionLimit || Math.abs(y) > positionLimit) {
+    notify("元件位置超出畫布座標範圍，請先平移或填滿視窗。", true);
+    return;
+  }
+  const component = {id: type + index, type, x, y};
   if (definitions[type].parameter) component.value = definitions[type].value;
   model.components.push(component);
   selected = component.id;
@@ -287,7 +337,7 @@ function loadSample() {
   };
   $("stop-time").value = model.stopTime;
   selected = null; pending = null; $("wire-hint").textContent = "就緒";
-  render(); invalidate();
+  render(); fitView(); invalidate();
 }
 
 function variableQuantity(name) {
@@ -484,7 +534,9 @@ for (const [type, def] of Object.entries(definitions)) {
   button.addEventListener("dragstart", event => event.dataTransfer.setData("text/plain", type));
   button.addEventListener("click", () => {
     activateTab("tab-modeling", primaryTabs); activateTab("tab-model-view", viewTabs);
-    addComponent(type, 30 + model.components.length * 20, 30 + model.components.length * 20);
+    const canvas = $("canvas"), rect = canvas.getBoundingClientRect();
+    const center = canvasPoint(rect.left + canvas.clientWidth / 2, rect.top + canvas.clientHeight / 2);
+    addComponent(type, center.x - 60, center.y - 36);
   });
   $("library").append(button);
 }
@@ -493,11 +545,49 @@ $("canvas").addEventListener("drop", event => {
   event.preventDefault();
   const type = event.dataTransfer.getData("text/plain");
   if (!Object.hasOwn(definitions, type)) return;
-  const rect = $("canvas").getBoundingClientRect();
-  addComponent(type, event.clientX - rect.left - 60, event.clientY - rect.top - 36);
+  const point = canvasPoint(event.clientX, event.clientY);
+  addComponent(type, point.x - 60, point.y - 36);
 });
+let panned = false;
+$("canvas").addEventListener("pointerdown", event => {
+  if (event.button !== 0 || event.target !== $("canvas")) return;
+  const canvas = $("canvas"), startX = event.clientX, startY = event.clientY, x = view.x, y = view.y;
+  panned = false;
+  canvas.setPointerCapture(event.pointerId);
+  canvas.classList.add("panning");
+  function move(e) {
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (Math.abs(dx) + Math.abs(dy) > 2) panned = true;
+    if (!panned) return;
+    view.x = x + dx; view.y = y + dy;
+    updateView();
+  }
+  function end() {
+    canvas.classList.remove("panning");
+    canvas.removeEventListener("pointermove", move);
+    canvas.removeEventListener("pointerup", end);
+    canvas.removeEventListener("pointercancel", end);
+  }
+  canvas.addEventListener("pointermove", move);
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+});
+$("canvas").addEventListener("wheel", event => {
+  event.preventDefault();
+  const rect = $("canvas").getBoundingClientRect();
+  zoomAt(view.scale * Math.exp(-Math.max(-200, Math.min(200, event.deltaY)) * 0.002),
+    event.clientX - rect.left, event.clientY - rect.top);
+}, {passive: false});
+for (const [id, factor] of [["zoom-in", 1.25], ["zoom-out", 1 / 1.25]]) {
+  $(id).addEventListener("click", () => {
+    const canvas = $("canvas");
+    zoomAt(view.scale * factor, canvas.clientWidth / 2, canvas.clientHeight / 2);
+  });
+}
+$("fit-view").addEventListener("click", fitView);
 $("canvas").addEventListener("click", event => {
-  if (event.target === $("canvas") || event.target === $("wires")) {
+  if (panned) { panned = false; return; }
+  if (event.target === $("canvas")) {
     selected = null; pending = null; $("wire-hint").textContent = "就緒"; render();
   }
 });
@@ -563,11 +653,12 @@ $("load").addEventListener("change", async event => {
     const candidate = JSON.parse(await file.text());
     await post("/api/model", candidate);
     if (typeof candidate.stopTime !== "number" || !Number.isFinite(candidate.stopTime) || candidate.stopTime <= 0 || candidate.stopTime > 1e6 ||
-        candidate.components.some(item => !Number.isFinite(item.x) || !Number.isFinite(item.y) || item.x < 0 || item.y < 0 || item.x > 10000 || item.y > 10000)) {
+        candidate.components.some(item => !Number.isFinite(item.x) || !Number.isFinite(item.y) || Math.abs(item.x) > positionLimit || Math.abs(item.y) > positionLimit)) {
       throw new Error("元件位置或模擬時間無效。");
     }
     model = candidate; selected = null; pending = null; $("wire-hint").textContent = "就緒"; $("stop-time").value = model.stopTime;
-    render(); invalidate(); notify("模型已匯入。");
+    activateTab("tab-modeling", primaryTabs); activateTab("tab-model-view", viewTabs);
+    render(); fitView(); invalidate(); notify("模型已匯入。");
   } catch (error) { notify(`匯入失敗：${error.message}`, true); }
   finally { event.target.value = ""; }
 });
