@@ -347,12 +347,17 @@ const WireRouter = (() => {
       }
       const clear = points => points.slice(1).every((point, i) =>
         obstacles.every(box => !intersects(points[i], point, box)));
+      const directRoutes = [];
       for (const corner of [{x: a.stub.x, y: b.stub.y}, {x: b.stub.x, y: a.stub.y}]) {
         const direct = [a.stub, corner, b.stub];
         if (clear(direct)) {
           const result = simplify([a.point, ...direct, b.point]);
-          cache.set(index, result); return result;
+          if (validManual(index, result)) directRoutes.push(result);
         }
+      }
+      if (directRoutes.length) {
+        directRoutes.sort((a, b) => a.length - b.length);
+        cache.set(index, directRoutes[0]); return directRoutes[0];
       }
       const path = search(a.stub, b.stub);
       const result = path ? simplify([a.point, ...path, b.point]) : null;

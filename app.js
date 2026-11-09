@@ -508,7 +508,8 @@ function moveComponentRoutes(item, originalRoutes, originalWires) {
       const parent = WireRouter.create(model.components, model.wires).route(wire.branch.parent);
       if (oldParent && parent) {
         const oldJunction = WireRouter.pointAt(oldParent, original.branch.fraction);
-        const nearest = WireRouter.nearest(parent, oldJunction);
+        const source = wire.from.id === item.id && item.type === "ground" ? portPosition(wire.from) : oldJunction;
+        const nearest = WireRouter.nearest(parent, source);
         if (nearest) wire.branch.fraction = Math.max(0.000001, Math.min(0.999999, nearest.fraction));
       }
     }
@@ -524,6 +525,7 @@ function moveComponentRoutes(item, originalRoutes, originalWires) {
       if (junction && (candidate.at(-1).x !== junction.x || candidate.at(-1).y !== junction.y))
         candidate = WireRouter.moveEndpoint(candidate, junction, false);
     }
+    if (wire.branch && wire.from.id === item.id && item.type === "ground") candidate = null;
     const router = WireRouter.create(model.components, model.wires);
     if (candidate && router.validManual(index, candidate)) {
       wire.route = candidate.map(point => ({...point}));
@@ -1006,31 +1008,14 @@ $("optimize-layout").addEventListener("click", () => {
   if (!model.components.length) { notify("請先新增元件再優化布局。"); return; }
   if (model.wires.some(wire => wire.route) &&
       !confirm("優化布局會重新排列元件並清除手動線路位置，確定繼續？")) return;
-  const components = CircuitLayout.arrange(model.components, model.wires);
-  const wires = model.wires.map(wire => {
-    const copy = {...wire};
-    if (wire.branch) copy.branch = {...wire.branch};
-    delete copy.route;
-    return copy;
-  });
-  for (const wire of wires) {
-    const ground = components.find(part => part.id === wire.from.id && part.type === "ground");
-    if (!ground || !wire.branch) continue;
-    const parent = WireRouter.create(components, wires).route(wire.branch.parent);
-    if (!parent) continue;
-    const junction = WireRouter.pointAt(parent, wire.branch.fraction);
-    const desiredX = Math.round((junction.x - 60) / 240) * 240;
-    if (!components.some(part => part !== ground && part.x === desiredX && part.y === ground.y))
-      ground.x = desiredX;
-    const nearest = WireRouter.nearest(parent, {x: ground.x + 60, y: ground.y});
-    wire.branch.fraction = Math.max(0.001, Math.min(0.999, nearest.fraction));
-  }
-  const router = WireRouter.create(components, wires);
-  const routes = wires.map((wire, index) => router.route(index));
-  if (routes.some(route => !route)) {
+  const layout = CircuitLayout.optimize(model.components, model.wires);
+  if (!layout) {
     notify("無法為此模型找到完整的自動線路；原布局及手動線路未變更。", true);
     return;
   }
+  const {components, wires} = layout;
+  const router = WireRouter.create(components, wires);
+  const routes = wires.map((wire, index) => router.route(index));
   const ambiguous = WireRouter.crossings(wires, routes).ambiguous;
   model.components = components;
   model.wires = wires;

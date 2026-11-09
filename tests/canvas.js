@@ -107,8 +107,21 @@ document.getElementById("app").addEventListener("load", async event => {
     assert(result.components.find(p => p.type === "resistor").rotation === 270, "電阻應水平");
     assert(result.components.find(p => p.type === "ground").y > result.components.find(p => p.type === "voltage").y,
       "接地應位於電路下方");
-    assert(result.wires.every((wire, i) => !wire.route && router.route(i)), "線路應重新繞線");
+    const routes = result.wires.map((wire, i) => router.route(i));
+    assert(routes.every(Boolean) && result.wires.every((wire, i) => !wire.route || router.validManual(i, wire.route)),
+      "線路應重新繞線並可保存");
     assert(result.wires[3].branch.parent === 2 && doc.querySelector(".wire-junction"), "分支接點應保留");
+    const resistor = result.components.find(p => p.type === "resistor");
+    const left = routes[0].at(-2), right = routes[1][1];
+    assert(left.y === WireRouter.port(resistor, "p").y && right.y === WireRouter.port(resistor, "n").y,
+      "電阻兩側的線段應水平對齊");
+    assert(Math.abs(resistor.x - left.x - (right.x - (resistor.x + 120))) <= WireRouter.gridSize,
+      "電阻兩側的水平線段長度應平衡");
+    const bottom = routes[2];
+    assert(bottom.length === 4 && bottom[1].y - bottom[0].y >= 48 &&
+      bottom.at(-2).y - bottom.at(-1).y >= 48, "下方回路應保留適當的垂直長度");
+    assert(routes[3].length === 2 && routes[3][0].x === routes[3][1].x,
+      "接地線應垂直連接回路");
     assert(app.eval("CircuitEngine.generate(model)") === code && $("workspace-count").textContent === "2",
       "排版不得更改電路或結果");
     assert($("wire-warning").hidden, "範例不應有繞線警告");
@@ -125,6 +138,26 @@ document.getElementById("app").addEventListener("load", async event => {
       assert(Math.abs(parts[i].x - parts[j].x) >= 120 || Math.abs(parts[i].y - parts[j].y) >= 72, "元件不可重疊");
     assert(parts.find(p => p.id === "c").y > parts.find(p => p.id === "g").y, "不同電路應分開");
   });
+  test("layout follows connectivity rather than component names", () => {
+    const components = [
+      {id:"v",type:"voltage"}, {id:"r1",type:"resistor"},
+      {id:"r2",type:"resistor"}, {id:"c",type:"capacitor"}
+    ];
+    const wire = (a, ap, b, bp) => ({from:{id:a,port:ap},to:{id:b,port:bp}});
+    const wires = [wire("v","p","r2","p"), wire("r2","n","r1","p"),
+      wire("r1","n","c","p"), wire("c","n","v","n")];
+    const result = app.eval("CircuitLayout").optimize(components, wires);
+    assert(result, "應找到可繞線的布局");
+    const part = id => result.components.find(p => p.id === id);
+    assert(part("v").x < part("r2").x && part("r2").x < part("r1").x &&
+      part("r1").x < part("c").x, "應依整體連線而非名稱排序");
+    const router = WireRouter.create(result.components, result.wires);
+    const between = router.route(1);
+    assert(between.length === 2 && between[0].y === between[1].y,
+      "相連電阻應以水平直線連接");
+    assert(JSON.stringify(result.wires.map(({from,to}) => ({from,to}))) ===
+      JSON.stringify(wires), "優化不得改變電氣連線");
+  });
   test("layout failure leaves all model data untouched", () => {
     app.loadSample();
     app.showResults({names: ["time", "capacitor1.v"], columns: [[0, 1], [0, 5]], timeIndex: 0});
@@ -132,7 +165,7 @@ document.getElementById("app").addEventListener("load", async event => {
     app.confirm = () => true;
     const router = app.eval("WireRouter"), original = router.create;
     try {
-      router.create = () => ({route: () => null});
+      router.create = () => ({route: () => null, validManual: () => false});
       $("optimize-layout").click();
       assert(app.eval("JSON.stringify(model)") === before && $("workspace-count").textContent === "2",
         "繞線失敗不得更改原模型或模擬結果");
@@ -499,7 +532,7 @@ document.getElementById("app").addEventListener("load", async event => {
   });
   test("moving a branch source or parent preserves junction and saved routes", () => {
     app.loadSample();
-    const data = app.eval("model"), junction = {x: 300, y: 240};
+    const data = app.eval("model");
     const drag = (name, dx, dy) => {
       const node = doc.querySelector(`.node[aria-label="${name}"]`);
       node.setPointerCapture = () => {};
@@ -513,10 +546,39 @@ document.getElementById("app").addEventListener("load", async event => {
       const parent = router.route(2), branch = router.route(3);
       assert(parent && branch, "移動後主線與分支均應可繞線");
       const point = WireRouter.pointAt(parent, saved.wires[3].branch.fraction);
-      assert(near(point.x, junction.x) && near(point.y, junction.y) &&
-        near(branch.at(-1).x, point.x) && near(branch.at(-1).y, point.y), "接點與分支必須保持連接");
+      const source = WireRouter.port(saved.components.find(part => part.id === "ground1"), "p");
+      assert(near(branch[0].x, source.x) && near(branch[0].y, source.y) &&
+        near(branch.at(-1).x, point.x) && near(branch.at(-1).y, point.y), "元件、接點與分支必須保持連接");
+      if (name === "接地 ground1") assert(point.x === source.x && branch.length === 2,
+        "水平移動接地時接點應隨之滑動，並維持垂直線段");
       assert(saved.wires.every((wire, i) => router.validManual(i, wire.route)), "保存的線路須能重新載入");
       assert(app.eval("CircuitEngine.generate(model)").includes("connect(ground1.p, voltage1.n)"), "分支電氣連接必須保留");
+    }
+    app.loadSample();
+  });
+  test("ground dragging updates its visible branch continuously in both directions", () => {
+    for (const [dx, dy] of [[48, 0], [-48, 0], [0, 48], [48, 48]]) {
+      app.loadSample();
+      const data = app.eval("model"), code = app.eval("CircuitEngine.generate(model)");
+      const node = doc.querySelector('.node[aria-label="接地 ground1"]'), scale = app.eval("view.scale");
+      node.setPointerCapture = () => {};
+      node.dispatchEvent(new app.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId:12, clientX:100, clientY:100}));
+      for (const ratio of [0.5, 1]) {
+        node.dispatchEvent(new app.PointerEvent("pointermove", {bubbles:true, button:0, pointerId:12,
+          clientX:100 + dx * scale * ratio, clientY:100 + dy * scale * ratio}));
+        const router = WireRouter.create(data.components, data.wires), route = router.route(3);
+        const point = WireRouter.pointAt(router.route(2), data.wires[3].branch.fraction);
+        const port = WireRouter.port(data.components.find(part => part.id === "ground1"), "p");
+        assert(route && router.validManual(3, route) && route[0].x === port.x && route[0].y === port.y &&
+          route.at(-1).x === point.x && route.at(-1).y === point.y && point.x === port.x,
+          "拖曳過程中接地端點與主線節點應連接並對齊");
+        const visible = $("wires").querySelectorAll("path.wire")[3].getAttribute("d");
+        assert(visible.includes(`${port.x} ${port.y}`) && visible.includes(`${point.x} ${point.y}`),
+          "畫出的分支應與實際路由一致");
+      }
+      node.dispatchEvent(new app.PointerEvent("pointerup", {bubbles:true, button:0, pointerId:12,
+        clientX:100 + dx * scale, clientY:100 + dy * scale}));
+      assert(app.eval("CircuitEngine.generate(model)") === code, "拖曳不得改變電氣連線");
     }
     app.loadSample();
   });
