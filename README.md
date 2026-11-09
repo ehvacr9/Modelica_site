@@ -1,4 +1,4 @@
-# Modelica Studio 網頁雛形
+# Modelica Studio 網頁
 
 以 OpenModelica 建立電路模型的靜態網站，適合部署到 GitHub Pages。元件庫包含直流電壓源、電阻、電容及接地；可連線、設定參數、匯入／匯出 JSON，並顯示 Modelica 程式碼和電容電壓曲線。
 
