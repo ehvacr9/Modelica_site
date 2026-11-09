@@ -19,6 +19,35 @@ test("rejects malformed or missing values", () => {
 test("validates connections", () => {
   fails(() => CircuitEngine.generate({components: [{id:"g", type:"ground"}], wires: [], stopTime:1}, true));
 });
+test("generates ideal voltage and current sensors with electrical pins", () => {
+  const model = {components: [
+    {id:"v",type:"voltage",value:5}, {id:"r",type:"resistor",value:1000},
+    {id:"g",type:"ground"}, {id:"vm",type:"voltmeter"}, {id:"am",type:"ammeter"}
+  ], wires: [
+    {from:{id:"v",port:"p"},to:{id:"am",port:"p"}},
+    {from:{id:"am",port:"n"},to:{id:"r",port:"p"}},
+    {from:{id:"r",port:"n"},to:{id:"v",port:"n"}},
+    {from:{id:"g",port:"p"},to:{id:"v",port:"n"}},
+    {from:{id:"vm",port:"p"},to:{id:"r",port:"p"}},
+    {from:{id:"vm",port:"n"},to:{id:"r",port:"n"}}
+  ], stopTime:1};
+  const code = CircuitEngine.generate(model, true);
+  assert(code.includes("Modelica.Electrical.Analog.Sensors.VoltageSensor vm;") &&
+    code.includes("Modelica.Electrical.Analog.Sensors.CurrentSensor am;"), "量測器的 Modelica 類型錯誤");
+  assert(code.includes("connect(vm.p, r.p);") && code.includes("connect(am.n, r.p);"), "量測器電氣連線錯誤");
+  assert(code.includes("meterReading1 = vm.v;") && code.includes("meterReading2 = am.i;"),
+    "應保留感測器輸出以免被 CSV 最佳化排除");
+  model.wires.pop();
+  fails(() => CircuitEngine.generate(model, true));
+});
+test("meter readings retain output aliases and avoid component name collisions", () => {
+  const parts = [{id:"meterReading1",type:"ground"},{id:"vm",type:"voltmeter"},{id:"am",type:"ammeter"}];
+  const result = CircuitEngine.parseCsv(csv('"time","meterReading2","meterReading3","am.i"\n0,5,0.005,0.005\n1,4,0.004,0.004\n'));
+  CircuitEngine.includeMeterReadings(result, parts);
+  assert(result.names.join("|") === "time|vm.v|am.i" && result.columns[1][0] === 5 &&
+    result.columns[2][1] === 0.004 && result.timeIndex === 0, "量測結果名稱或數值錯誤");
+  fails(() => CircuitEngine.includeMeterReadings(CircuitEngine.parseCsv(csv('"time","x"\n0,1\n')), parts));
+});
 test("validates branch parent, position and electrical target", () => {
   const model = {components: [{id:"a",type:"ground"}, {id:"b",type:"ground"}, {id:"c",type:"ground"}],
     wires: [{from:{id:"a",port:"p"},to:{id:"b",port:"p"}},

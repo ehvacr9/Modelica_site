@@ -9,6 +9,37 @@ document.getElementById("app").addEventListener("load", async event => {
   const test = (name, fn) => tests.push([name, fn]);
   const near = (a, b) => Math.abs(a - b) < 0.001;
 
+  test("meter components can be added, rotated, and imported", async () => {
+    app.loadSample();
+    const buttons = [...$("library").querySelectorAll("button")];
+    for (const [type, name, label] of [["voltmeter", "電壓表", "V"], ["ammeter", "電流表", "A"]]) {
+      const button = buttons.find(item => item.textContent.includes(name));
+      assert(button, `元件庫缺少${name}`);
+      button.click();
+      const part = app.eval("model.components").find(item => item.type === type);
+      assert(part && !Object.hasOwn(part, "value"), `${name}應無參數`);
+      const node = doc.querySelector(`.node[aria-label="${name} ${part.id}"]`);
+      assert(node && node.querySelectorAll(".port").length === 2, `${name}需要兩個電氣端點`);
+      const glyph = node.querySelector(".symbol > path");
+      const mark = glyph.getAttribute("d");
+      assert(mark && node.querySelector(".symbol > g"), `${label}量測符號缺失`);
+      const rotated = app.symbol(type, 90);
+      assert(rotated.querySelector(":scope > path").getAttribute("d") === mark, `${label}標記旋轉後應保持水平`);
+    }
+    const saved = JSON.parse(app.eval("JSON.stringify(model)"));
+    const transfer = new app.DataTransfer();
+    transfer.items.add(new app.File([JSON.stringify(saved)], "meters.json", {type:"application/json"}));
+    $("load").files = transfer.files;
+    $("load").dispatchEvent(new app.Event("change", {bubbles:true}));
+    for (let i = 0; i < 50 && !$("message").textContent.includes("模型已匯入"); i++)
+      await new Promise(resolve => setTimeout(resolve, 20));
+    assert($("message").textContent.includes("模型已匯入") &&
+      app.eval("model.components.some(p => p.type === 'voltmeter') && model.components.some(p => p.type === 'ammeter')"),
+      "量測器應能匯出後匯入");
+    assert(app.variableQuantity("voltmeter1.v").unit === "V" && app.variableQuantity("ammeter1.i").unit === "A",
+      "量測結果應顯示正確單位");
+    app.loadSample();
+  });
   test("components, auto routes and branch junctions follow the visible grid", () => {
     app.loadSample();
     const data = app.eval("model"), grid = app.eval("WireRouter.gridSize");

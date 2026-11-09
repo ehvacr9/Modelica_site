@@ -5,8 +5,24 @@ const CircuitEngine = (() => {
     voltage: ["Modelica.Electrical.Analog.Sources.ConstantVoltage", "V", ["p", "n"]],
     resistor: ["Modelica.Electrical.Analog.Basic.Resistor", "R", ["p", "n"]],
     capacitor: ["Modelica.Electrical.Analog.Basic.Capacitor", "C", ["p", "n"]],
+    voltmeter: ["Modelica.Electrical.Analog.Sensors.VoltageSensor", null, ["p", "n"]],
+    ammeter: ["Modelica.Electrical.Analog.Sensors.CurrentSensor", null, ["p", "n"]],
     ground: ["Modelica.Electrical.Analog.Basic.Ground", null, ["p"]]
   };
+
+  function meterOutputs(components) {
+    const used = new Set(components.map(part => part.id));
+    const outputs = [];
+    for (const part of components) {
+      if (part.type !== "voltmeter" && part.type !== "ammeter") continue;
+      let suffix = outputs.length + 1, name = `meterReading${suffix}`;
+      while (used.has(name)) name = `meterReading${++suffix}`;
+      used.add(name);
+      outputs.push({name, variable: `${part.id}.${part.type === "voltmeter" ? "v" : "i"}`,
+        unit: part.type === "voltmeter" ? "V" : "A"});
+    }
+    return outputs;
+  }
 
   function generate(data, simulation = false) {
     if (!data || !Array.isArray(data.components) || !Array.isArray(data.wires) ||
@@ -27,7 +43,10 @@ const CircuitEngine = (() => {
       }
       lines.push(`  ${cls} ${part.id}${modifier};`);
     }
+    const outputs = meterOutputs(data.components);
+    for (const output of outputs) lines.push(`  output Real ${output.name}(unit="${output.unit}");`);
     lines.push("equation");
+    for (const output of outputs) lines.push(`  ${output.name} = ${output.variable};`);
     for (const [index, wire] of data.wires.entries()) {
       const endpoints = [wire?.from, wire?.to];
       for (const end of endpoints) {
@@ -105,8 +124,24 @@ const CircuitEngine = (() => {
     return {names: headers, columns, timeIndex};
   }
 
+  function includeMeterReadings(result, components) {
+    for (const output of meterOutputs(components)) {
+      const index = result.names.indexOf(output.name);
+      if (index < 0) throw new Error(`模擬結果缺少量測值 ${output.variable}。`);
+      const existing = result.names.indexOf(output.variable);
+      if (existing < 0) result.names[index] = output.variable;
+      else {
+        result.names.splice(index, 1);
+        result.columns.splice(index, 1);
+        if (index < result.timeIndex) result.timeIndex--;
+      }
+    }
+    return result;
+  }
+
   async function simulate(data, status) {
     const code = generate(data, true);
+    const components = data.components.map(part => ({id: part.id, type: part.type}));
     const worker = new Worker(new URL("./vendor/omc_worker.js", document.baseURI), {type: "module"});
     let timer;
     try {
@@ -147,11 +182,11 @@ const CircuitEngine = (() => {
         worker.postMessage({cmd: "init"});
       });
       status("OpenModelica 模擬完成");
-      return parseCsv(response);
+      return includeMeterReadings(parseCsv(response), components);
     } finally {
       clearTimeout(timer);
       worker.terminate();
     }
   }
-  return {generate, simulate, parseCsv};
+  return {generate, simulate, parseCsv, includeMeterReadings};
 })();

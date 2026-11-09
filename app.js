@@ -4,6 +4,8 @@ const definitions = {
   voltage: {name: "直流電壓源", parameter: "電壓 V", unit: "V", value: 5},
   resistor: {name: "電阻", parameter: "電阻 R", unit: "Ω", value: 1000},
   capacitor: {name: "電容", parameter: "電容 C", unit: "F", value: 0.0001},
+  voltmeter: {name: "電壓表"},
+  ammeter: {name: "電流表"},
   ground: {name: "接地"}
 };
 const $ = id => document.getElementById(id);
@@ -167,6 +169,8 @@ function symbol(type, rotation = 0) {
     resistor: ["M -36 0 H -27 L -23 -9 L -15 9 L -7 -9 L 1 9 L 9 -9 L 17 9 L 23 -9 L 27 0 H 36"],
     capacitor: ["M -36 0 H -7 M -7 -17 V 17 M 7 -17 V 17 M 7 0 H 36"],
     voltage: ["M -36 0 H -19 M 19 0 H 36", "M -19 0 A 19 19 0 1 0 19 0 A 19 19 0 1 0 -19 0"],
+    voltmeter: ["M -36 0 H -19 M 19 0 H 36", "M -19 0 A 19 19 0 1 0 19 0 A 19 19 0 1 0 -19 0"],
+    ammeter: ["M -36 0 H -19 M 19 0 H 36", "M -19 0 A 19 19 0 1 0 19 0 A 19 19 0 1 0 -19 0"],
     ground: ["M -36 0 H -6 M -6 -17 V 17 M 1 -11 V 11 M 8 -5 V 5"]
   };
   for (const data of shapes[type]) {
@@ -175,6 +179,12 @@ function symbol(type, rotation = 0) {
     group.append(path);
   }
   svg.append(group);
+  if (type === "voltmeter" || type === "ammeter") {
+    const mark = document.createElementNS(ns, "path");
+    mark.setAttribute("d", type === "voltmeter" ? "M 53 29 L 60 43 L 67 29" :
+      "M 53 43 L 60 29 L 67 43 M 56 38 H 64");
+    svg.append(mark);
+  }
   if (type === "voltage") {
     const offsets = [[-9, 0], [0, -9], [9, 0], [0, 9]];
     const [dx, dy] = offsets[symbolRotation / 90];

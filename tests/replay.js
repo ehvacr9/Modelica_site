@@ -93,6 +93,19 @@ document.getElementById("app").addEventListener("load", event => {
     const ticks = [...$("plot-y-ticks").children].map(tick => tick.textContent);
     assert(new Set(ticks).size === 5 && Number(ticks[0]) > Number(ticks[4]), "刻度不應因四捨五入變成相同數值");
   });
+  test("meter readings appear in the workspace with correct plot units", () => {
+    app.addComponent("voltmeter", 720, 0);
+    app.addComponent("ammeter", 900, 0);
+    app.showResults({names:["time", "voltmeter1.v", "ammeter1.i"], timeIndex:0,
+      columns:[[0,1],[0,5],[0,0.005]]});
+    assert($("workspace-variables").textContent.includes("voltmeter1.v") &&
+      $("workspace-variables").textContent.includes("ammeter1.i"), "工作區缺少量測數值");
+    $("tab-plotting").click();
+    doc.querySelector('[data-index="1"]').click();
+    assert($("plot-y-title").textContent === "電壓 (V)", "電壓表曲線單位錯誤");
+    doc.querySelector('[data-index="2"]').click();
+    assert($("plot-y-title").textContent === "電流 (A)", "電流表曲線單位錯誤");
+  });
 
   let failures = 0;
   for (const [name, run] of tests) {
