@@ -28,5 +28,3 @@ jobs:
           path: .
       - id: deployment
         uses: actions/deploy-pages@v5
-        with:
-          timeout: 1200000
