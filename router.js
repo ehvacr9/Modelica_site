@@ -36,12 +36,12 @@ const WireRouter = (() => {
     return result;
   }
 
-  function shiftSegment(points, index, offset) {
+  function shiftSegment(points, index, offset, moveEnd = false) {
     const start = points[index], end = points[index + 1];
     if (!start || !end || (start.x !== end.x && start.y !== end.y)) return null;
     const horizontal = start.y === end.y;
     const length = horizontal ? Math.abs(end.x - start.x) : Math.abs(end.y - start.y);
-    const needed = (index === 0 ? clearance : 0) + (index + 1 === points.length - 1 ? clearance : 0);
+    const needed = (index === 0 ? clearance : 0) + (index + 1 === points.length - 1 && !moveEnd ? clearance : 0);
     if (length <= needed) return null;
     const sign = horizontal ? Math.sign(end.x - start.x) : Math.sign(end.y - start.y);
     const a = {...start}, b = {...end};
@@ -49,7 +49,7 @@ const WireRouter = (() => {
       if (horizontal) a.x += sign * clearance;
       else a.y += sign * clearance;
     }
-    if (index + 1 === points.length - 1) {
+    if (index + 1 === points.length - 1 && !moveEnd) {
       if (horizontal) b.x -= sign * clearance;
       else b.y -= sign * clearance;
     }
@@ -57,7 +57,7 @@ const WireRouter = (() => {
     if (horizontal) { movedA.y += offset; movedB.y += offset; }
     else { movedA.x += offset; movedB.x += offset; }
     const before = index === 0 ? [start, a] : points.slice(0, index);
-    const after = index + 1 === points.length - 1 ? [b, end] : points.slice(index + 2);
+    const after = index + 1 === points.length - 1 ? (moveEnd ? [] : [b, end]) : points.slice(index + 2);
     return simplify([...before, movedA, movedB, ...after]);
   }
 

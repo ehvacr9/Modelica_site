@@ -279,20 +279,75 @@ function drawWires() {
         if (d < distance) { distance = d; segment = i; }
       }
       const horizontal = points[segment].y === points[segment + 1].y;
-      let candidate = null;
+      const parent = wire.branch && segment === points.length - 2 ? routes[wire.branch.parent] : null;
+      const endPoint = points.at(-1);
+      const parentIndex = parent && parent.findIndex((point, i) => {
+        const next = parent[i + 1];
+        if (!next || ((point.y === next.y) === horizontal)) return false;
+        return endPoint.x >= Math.min(point.x, next.x) && endPoint.x <= Math.max(point.x, next.x) &&
+          endPoint.y >= Math.min(point.y, next.y) && endPoint.y <= Math.max(point.y, next.y);
+      });
+      const parentSegment = parent && parentIndex >= 0 ?
+        [parent[parentIndex], parent[parentIndex + 1]] : null;
+      const slidesOnParent = !!parentSegment;
+      const oldJunction = slidesOnParent && points.at(-1);
+      const junctionDot = oldJunction && [...svg.querySelectorAll(".wire-junction")].find(dot =>
+        Number(dot.getAttribute("cx")) === oldJunction.x && Number(dot.getAttribute("cy")) === oldJunction.y);
+      const sharedJunction = oldJunction && routes.some((route, i) => i !== index && i !== wire.branch.parent &&
+        route && [route[0], route.at(-1)].some(point => point.x === oldJunction.x && point.y === oldJunction.y));
+      let previewDot = null;
+      let candidate = null, candidateFraction = null;
       dragged = false;
       const target = event.currentTarget;
       target.setPointerCapture(event.pointerId);
+      function validCandidate() {
+        if (!candidate) return false;
+        if (!slidesOnParent) return router.validManual(index, candidate);
+        if (candidateFraction === null) return false;
+        const trial = model.wires.map((item, i) => i === index ?
+          {...item, branch: {...item.branch, fraction: candidateFraction}} : item);
+        return WireRouter.create(model.components, trial).validManual(index, candidate);
+      }
       function move(e) {
         if (e.pointerId !== event.pointerId) return;
         const delta = horizontal ? (e.clientY - event.clientY) / view.scale : (e.clientX - event.clientX) / view.scale;
         if (Math.abs(delta * view.scale) <= 3 && !dragged) return;
         dragged = true;
         hitGroup.style.opacity = "0";
-        candidate = WireRouter.shiftSegment(points, segment, WireRouter.snap(delta));
-        const valid = candidate && router.validManual(index, candidate);
+        const offset = WireRouter.snap(delta);
+        candidate = WireRouter.shiftSegment(points, segment, offset, !!slidesOnParent);
+        candidateFraction = null;
+        if (candidate && slidesOnParent) {
+          const end = candidate.at(-1);
+          const axis = horizontal ? "y" : "x";
+          const low = Math.min(parentSegment[0][axis], parentSegment[1][axis]);
+          const high = Math.max(parentSegment[0][axis], parentSegment[1][axis]);
+          const nearest = WireRouter.nearest(parent, end);
+          if (end[axis] >= low && end[axis] <= high && nearest && nearest.distance < 1e-8 &&
+              nearest.fraction > 0 && nearest.fraction < 1) {
+            const point = WireRouter.pointAt(parent, nearest.fraction);
+            if (point && Math.hypot(point.x - end.x, point.y - end.y) < 1e-8)
+              candidateFraction = nearest.fraction;
+          }
+        }
+        const valid = validCandidate();
         path.classList.toggle("wire-drag-invalid", !valid);
-        if (valid) path.setAttribute("d", candidate.map((point, i) => `${i ? "L" : "M"} ${point.x} ${point.y}`).join(" "));
+        if (valid) {
+          path.setAttribute("d", candidate.map((point, i) => `${i ? "L" : "M"} ${point.x} ${point.y}`).join(" "));
+          if (slidesOnParent && junctionDot) {
+            if (!previewDot) {
+              previewDot = junctionDot.cloneNode();
+              svg.append(previewDot);
+            }
+            if (!sharedJunction) junctionDot.style.visibility = "hidden";
+            previewDot.setAttribute("cx", candidate.at(-1).x);
+            previewDot.setAttribute("cy", candidate.at(-1).y);
+          }
+        } else {
+          path.setAttribute("d", pathData(points, index));
+          if (previewDot) { previewDot.remove(); previewDot = null; }
+          if (junctionDot) junctionDot.style.visibility = "";
+        }
       }
       function end(e) {
         if (e.pointerId !== event.pointerId) return;
@@ -300,7 +355,7 @@ function drawWires() {
         target.removeEventListener("pointerup", end);
         target.removeEventListener("pointercancel", end);
         if (dragged) {
-          if (e.type !== "pointercancel" && candidate && router.validManual(index, candidate)) {
+          if (e.type !== "pointercancel" && validCandidate()) {
             for (const child of model.wires) {
               if (!child.branch || child.branch.parent !== index) continue;
               const oldPoint = WireRouter.pointAt(points, child.branch.fraction);
@@ -311,6 +366,7 @@ function drawWires() {
               }
               child.branch.fraction = Math.max(0.000001, Math.min(0.999999, WireRouter.nearest(candidate, oldPoint).fraction));
             }
+            if (slidesOnParent) wire.branch.fraction = candidateFraction;
             wire.route = candidate;
           }
           else if (e.type !== "pointercancel") notify("無法在此位置放置線段，請避開元件並保留端點連接。", true);

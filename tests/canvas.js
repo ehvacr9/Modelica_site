@@ -220,6 +220,102 @@ document.getElementById("app").addEventListener("load", async event => {
     routes[2] = [{x: 20, y: 0}, {x: 80, y: 0}];
     assert(WireRouter.crossings(wires, routes).ambiguous, "不同網路重疊應顯示警告");
   });
+  test("dragging a branch near its junction slides the junction along its parent", () => {
+    app.loadSample();
+    const data = app.eval("model"), code = app.eval("CircuitEngine.generate(model)");
+    const parentBefore = JSON.stringify(data.wires[2].route);
+    const group = $("wires").querySelectorAll("g")[3], hit = group.querySelector(".wire-hit");
+    const start = new app.DOMPoint(300, 243).matrixTransform(hit.getScreenCTM());
+    const scale = app.eval("view.scale");
+    group.setPointerCapture = () => {};
+    hit.dispatchEvent(new app.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId: 7, clientX:start.x, clientY:start.y}));
+    group.dispatchEvent(new app.PointerEvent("pointermove", {bubbles:true, button:0, pointerId:7, clientX:start.x + 24 * scale, clientY:start.y}));
+    const preview = [...$("wires").querySelectorAll(".wire-junction")].find(dot =>
+      Number(dot.getAttribute("cx")) === 324 && Number(dot.getAttribute("cy")) === 240);
+    assert(preview, "拖曳預覽中的接點應跟隨線段");
+    group.dispatchEvent(new app.PointerEvent("pointerup", {bubbles:true, button:0, pointerId:7, clientX:start.x + 24 * scale, clientY:start.y}));
+    const router = WireRouter.create(data.components, data.wires);
+    const route = router.route(3), junction = WireRouter.pointAt(router.route(2), data.wires[3].branch.fraction);
+    assert(junction.x === 324 && junction.y === 240 && near(route.at(-1).x, junction.x) && near(route.at(-1).y, junction.y),
+      "接點必須沿主線移動且分支末端與之相連");
+    assert(route.at(-2).x === junction.x && route.at(-2).y > junction.y &&
+      route.every(p => WireRouter.onGrid(p.x) && WireRouter.onGrid(p.y)), "接點附近應維持單一垂直格點線段");
+    assert(JSON.stringify(data.wires[2].route) === parentBefore && app.eval("CircuitEngine.generate(model)") === code,
+      "拖曳不得改變主線或電氣連接");
+    assert(router.validManual(3, JSON.parse(JSON.stringify(data.wires[3].route))), "路徑須可儲存並重新載入");
+    const movedGroup = $("wires").querySelectorAll("g")[3], movedHit = [...movedGroup.querySelectorAll(".wire-hit")].at(-1);
+    const movedStart = new app.DOMPoint(324, 246).matrixTransform(movedHit.getScreenCTM());
+    movedGroup.setPointerCapture = () => {};
+    movedHit.dispatchEvent(new app.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId:8, clientX:movedStart.x, clientY:movedStart.y}));
+    movedGroup.dispatchEvent(new app.PointerEvent("pointermove", {bubbles:true, button:0, pointerId:8, clientX:movedStart.x + 600 * scale, clientY:movedStart.y}));
+    movedGroup.dispatchEvent(new app.PointerEvent("pointerup", {bubbles:true, button:0, pointerId:8, clientX:movedStart.x + 600 * scale, clientY:movedStart.y}));
+    assert(WireRouter.pointAt(WireRouter.create(data.components, data.wires).route(2), data.wires[3].branch.fraction).x === 324,
+      "超出主線的拖曳不可改變接點");
+    app.loadSample();
+  });
+  test("horizontal branch slides along a vertical parent and cancel restores the junction", () => {
+    app.eval(`model = {diagramVersion:2, stopTime:1, components:[
+      {id:"a",type:"resistor",value:1,x:0,y:0},
+      {id:"b",type:"resistor",value:1,x:0,y:408},
+      {id:"g",type:"ground",x:240,y:180,rotation:270}
+    ],wires:[
+      {from:{id:"a",port:"n"},to:{id:"b",port:"p"},route:[{x:60,y:72},{x:60,y:408}]},
+      {from:{id:"g",port:"p"},to:{id:"a",port:"n"},branch:{parent:0,fraction:3/7},
+       route:[{x:240,y:216},{x:60,y:216}]}
+    ]}`);
+    app.render(); app.fitView();
+    const data = app.eval("model"), before = JSON.stringify(data.wires);
+    const drag = endType => {
+      const group = $("wires").querySelectorAll("g")[1], hit = group.querySelector(".wire-hit");
+      const start = new app.DOMPoint(63, 216).matrixTransform(hit.getScreenCTM());
+      const scale = app.eval("view.scale");
+      group.setPointerCapture = () => {};
+      hit.dispatchEvent(new app.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId:9, clientX:start.x, clientY:start.y}));
+      for (const type of ["pointermove", endType])
+        group.dispatchEvent(new app.PointerEvent(type, {bubbles:true, button:0, pointerId:9, clientX:start.x, clientY:start.y + 24 * scale}));
+    };
+    drag("pointercancel");
+    assert(JSON.stringify(data.wires) === before, "取消拖曳不得更動主線或分支");
+    drag("pointerup");
+    const router = WireRouter.create(data.components, data.wires), route = router.route(1);
+    const point = WireRouter.pointAt(router.route(0), data.wires[1].branch.fraction);
+    assert(point.x === 60 && point.y === 240 && route.at(-1).y === 240 && route.at(-2).y === 240,
+      "水平分支與接點應一起沿垂直主線移動");
+    assert(router.validManual(1, route) && route.every(p => WireRouter.onGrid(p.x) && WireRouter.onGrid(p.y)),
+      "更新後的分支必須有效並對齊格點");
+    app.loadSample();
+  });
+  test("branch at a parent corner slides along the perpendicular segment", () => {
+    app.eval(`model = {diagramVersion:2, stopTime:1, components:[
+      {id:"a",type:"resistor",value:1,x:0,y:0},
+      {id:"b",type:"resistor",value:1,x:0,y:408},
+      {id:"g",type:"ground",x:240,y:180,rotation:270}
+    ],wires:[
+      {from:{id:"a",port:"n"},to:{id:"b",port:"p"},
+       route:[{x:60,y:72},{x:60,y:120},{x:24,y:120},{x:24,y:216},{x:60,y:216},{x:60,y:408}]},
+      {from:{id:"g",port:"p"},to:{id:"a",port:"n"},branch:{parent:0,fraction:0.6},
+       route:[{x:240,y:216},{x:60,y:216}]}
+    ]}`);
+    const data = app.eval("model");
+    const parent = data.wires[0].route;
+    data.wires[1].branch.fraction = WireRouter.nearest(parent, {x:60,y:216}).fraction;
+    assert(WireRouter.create(data.components, data.wires).validManual(1, data.wires[1].route),
+      "轉角分支的初始路徑必須有效");
+    app.render(); app.fitView();
+    const group = $("wires").querySelectorAll("g")[1], hit = group.querySelector(".wire-hit");
+    const start = new app.DOMPoint(63, 216).matrixTransform(hit.getScreenCTM());
+    const scale = app.eval("view.scale");
+    group.setPointerCapture = () => {};
+    hit.dispatchEvent(new app.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId:10, clientX:start.x, clientY:start.y}));
+    for (const type of ["pointermove", "pointerup"])
+      group.dispatchEvent(new app.PointerEvent(type, {bubbles:true, button:0, pointerId:10, clientX:start.x, clientY:start.y + 24 * scale}));
+    const router = WireRouter.create(data.components, data.wires), route = router.route(1);
+    const point = WireRouter.pointAt(router.route(0), data.wires[1].branch.fraction);
+    assert(point.x === 60 && point.y === 240 && route.at(-1).y === 240 && route.at(-2).y === 240,
+      "位於轉角的接點應沿垂直主線滑動");
+    assert(router.validManual(1, route), "滑動後的分支必須有效");
+    app.loadSample();
+  });
   test("clicking a wire creates a branch and dragging the main segment moves the junction", () => {
     app.loadSample();
     app.eval("model.wires.pop()");
