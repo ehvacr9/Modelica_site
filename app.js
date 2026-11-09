@@ -733,27 +733,29 @@ function alignImportedModel(candidate) {
 }
 
 function loadSample() {
-  model = {
+  const sample = {
     diagramVersion: 2,
     components: [
-      {id: "voltage1", type: "voltage", value: 5, x: 24, y: 108},
-      {id: "resistor1", type: "resistor", value: 1000, x: 240, y: 60, rotation: 270},
-      {id: "capacitor1", type: "capacitor", value: 0.0001, x: 480, y: 108},
-      {id: "ground1", type: "ground", x: 240, y: 276}
+      {id: "voltage1", type: "voltage", value: 5, x: 0, y: 0},
+      {id: "resistor1", type: "resistor", value: 1000, x: 0, y: 0},
+      {id: "capacitor1", type: "capacitor", value: 0.0001, x: 0, y: 0},
+      {id: "ground1", type: "ground", x: 0, y: 0}
     ],
     wires: [
-      {from: {id: "voltage1", port: "p"}, to: {id: "resistor1", port: "p"},
-        route: [{x: 84, y: 108}, {x: 84, y: 36}, {x: 228, y: 36}, {x: 228, y: 96}, {x: 240, y: 96}]},
-      {from: {id: "resistor1", port: "n"}, to: {id: "capacitor1", port: "p"},
-        route: [{x: 360, y: 96}, {x: 372, y: 96}, {x: 372, y: 84}, {x: 540, y: 84}, {x: 540, y: 108}]},
-      {from: {id: "capacitor1", port: "n"}, to: {id: "voltage1", port: "n"},
-        route: [{x: 540, y: 180}, {x: 540, y: 240}, {x: 84, y: 240}, {x: 84, y: 180}]},
+      {from: {id: "voltage1", port: "p"}, to: {id: "resistor1", port: "p"}},
+      {from: {id: "resistor1", port: "n"}, to: {id: "capacitor1", port: "p"}},
+      {from: {id: "capacitor1", port: "n"}, to: {id: "voltage1", port: "n"}},
       {from: {id: "ground1", port: "p"}, to: {id: "voltage1", port: "n"},
-        branch: {parent: 2, fraction: 300 / 576},
-        route: [{x: 300, y: 276}, {x: 300, y: 240}]}
+        branch: {parent: 2, fraction: 0.5}}
     ],
     stopTime: 1
   };
+  const layout = CircuitLayout.optimize(sample.components, sample.wires);
+  if (!layout) {
+    notify("無法建立範例的優化布局，原模型未變更。", true);
+    return;
+  }
+  model = {...sample, components: layout.components, wires: layout.wires};
   $("stop-time").value = model.stopTime;
   selected = null; pending = null; $("wire-hint").textContent = "就緒";
   render(); fitView(); invalidate();

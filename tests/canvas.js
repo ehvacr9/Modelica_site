@@ -127,6 +127,39 @@ document.getElementById("app").addEventListener("load", async event => {
     assert($("wire-warning").hidden, "範例不應有繞線警告");
     app.loadSample();
   });
+  test("loaded sample matches the optimized layout and reloads consistently", () => {
+    app.loadSample();
+    const snapshot = () => {
+      const data = app.eval("model"), router = WireRouter.create(data.components, data.wires);
+      return JSON.stringify({
+        components: data.components,
+        wires: data.wires,
+        routes: data.wires.map((wire, i) => router.route(i)),
+        junctions: [...$("wires").querySelectorAll(".wire-junction")].map(dot =>
+          [dot.getAttribute("cx"), dot.getAttribute("cy")]),
+        paths: [...$("wires").querySelectorAll("path.wire")].map(path => path.getAttribute("d")),
+        code: app.eval("CircuitEngine.generate(model)")
+      });
+    };
+    const before = snapshot();
+    app.confirm = () => true;
+    $("optimize-layout").click();
+    assert(snapshot() === before, "優化後元件、線路、節點和電氣連接必須與載入範例一致");
+    $("optimize-layout").click();
+    assert(snapshot() === before, "重複優化不應改變範例布局");
+    app.loadSample();
+    assert(snapshot() === before, "重新載入範例應恢復相同布局");
+  });
+  test("sample layout failure leaves the existing model untouched", () => {
+    const before = app.eval("JSON.stringify(model)");
+    const layout = app.eval("CircuitLayout"), original = layout.optimize;
+    try {
+      layout.optimize = () => null;
+      app.loadSample();
+      assert(app.eval("JSON.stringify(model)") === before, "範例布局失敗不得替換模型");
+      assert($("message").textContent.includes("原模型未變更"), "範例布局失敗應顯示錯誤");
+    } finally { layout.optimize = original; }
+  });
   test("layout groups disconnected circuits and avoids component overlap", () => {
     const components = [
       {id: "v", type: "voltage"}, {id: "r", type: "resistor"}, {id: "g", type: "ground"},
@@ -175,7 +208,7 @@ document.getElementById("app").addEventListener("load", async event => {
   test("sample layout has a single ground junction and no routing warnings", () => {
     assert($("wire-warning").hidden, "範例不應有繞線警告");
     const dots = [...$("wires").querySelectorAll(".wire-junction")];
-    assert(dots.length === 1 && dots[0].getAttribute("cx") === "300" && dots[0].getAttribute("cy") === "240",
+    assert(dots.length === 1 && dots[0].getAttribute("cx") === "276" && dots[0].getAttribute("cy") === "204",
       "接地線應接至回路下方的單一接點");
     assert(!$("wires").querySelector(".wire-bridge"), "範例線路不應相互跨越");
   });
@@ -184,9 +217,9 @@ document.getElementById("app").addEventListener("load", async event => {
     const groups = $("wires").querySelectorAll("g");
     const main = [...groups[2].querySelectorAll(".wire-hit")].map(path => path.getAttribute("d"));
     const branch = [...groups[3].querySelectorAll(".wire-hit")].map(path => path.getAttribute("d"));
-    assert(main.includes("M 540 240 L 300 240") && main.includes("M 300 240 L 84 240"),
+    assert(main.includes("M 492 204 L 276 204") && main.includes("M 276 204 L 60 204"),
       `主線命中區必須在接點分割：${main.join("; ")}`);
-    assert(branch.join("; ").includes("300 240"), "分支命中區應到達主線接點");
+    assert(branch.join("; ").includes("276 204"), "分支命中區應到達主線接點");
     assert(app.eval("CircuitEngine.generate(model)").includes("connect(ground1.p, voltage1.n)"),
       "分支須保留電氣連接");
   });
@@ -258,18 +291,18 @@ document.getElementById("app").addEventListener("load", async event => {
     const data = app.eval("model"), code = app.eval("CircuitEngine.generate(model)");
     const parentBefore = JSON.stringify(data.wires[2].route);
     const group = $("wires").querySelectorAll("g")[3], hit = group.querySelector(".wire-hit");
-    const start = new app.DOMPoint(300, 243).matrixTransform(hit.getScreenCTM());
+    const start = new app.DOMPoint(276, 207).matrixTransform(hit.getScreenCTM());
     const scale = app.eval("view.scale");
     group.setPointerCapture = () => {};
     hit.dispatchEvent(new app.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId: 7, clientX:start.x, clientY:start.y}));
     group.dispatchEvent(new app.PointerEvent("pointermove", {bubbles:true, button:0, pointerId:7, clientX:start.x + 24 * scale, clientY:start.y}));
     const preview = [...$("wires").querySelectorAll(".wire-junction")].find(dot =>
-      Number(dot.getAttribute("cx")) === 324 && Number(dot.getAttribute("cy")) === 240);
+      Number(dot.getAttribute("cx")) === 300 && Number(dot.getAttribute("cy")) === 204);
     assert(preview, "拖曳預覽中的接點應跟隨線段");
     group.dispatchEvent(new app.PointerEvent("pointerup", {bubbles:true, button:0, pointerId:7, clientX:start.x + 24 * scale, clientY:start.y}));
     const router = WireRouter.create(data.components, data.wires);
     const route = router.route(3), junction = WireRouter.pointAt(router.route(2), data.wires[3].branch.fraction);
-    assert(junction.x === 324 && junction.y === 240 && near(route.at(-1).x, junction.x) && near(route.at(-1).y, junction.y),
+    assert(junction.x === 300 && junction.y === 204 && near(route.at(-1).x, junction.x) && near(route.at(-1).y, junction.y),
       "接點必須沿主線移動且分支末端與之相連");
     assert(route.at(-2).x === junction.x && route.at(-2).y > junction.y &&
       route.every(p => WireRouter.onGrid(p.x) && WireRouter.onGrid(p.y)), "接點附近應維持單一垂直格點線段");
@@ -277,12 +310,12 @@ document.getElementById("app").addEventListener("load", async event => {
       "拖曳不得改變主線或電氣連接");
     assert(router.validManual(3, JSON.parse(JSON.stringify(data.wires[3].route))), "路徑須可儲存並重新載入");
     const movedGroup = $("wires").querySelectorAll("g")[3], movedHit = [...movedGroup.querySelectorAll(".wire-hit")].at(-1);
-    const movedStart = new app.DOMPoint(324, 246).matrixTransform(movedHit.getScreenCTM());
+    const movedStart = new app.DOMPoint(300, 210).matrixTransform(movedHit.getScreenCTM());
     movedGroup.setPointerCapture = () => {};
     movedHit.dispatchEvent(new app.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId:8, clientX:movedStart.x, clientY:movedStart.y}));
     movedGroup.dispatchEvent(new app.PointerEvent("pointermove", {bubbles:true, button:0, pointerId:8, clientX:movedStart.x + 600 * scale, clientY:movedStart.y}));
     movedGroup.dispatchEvent(new app.PointerEvent("pointerup", {bubbles:true, button:0, pointerId:8, clientX:movedStart.x + 600 * scale, clientY:movedStart.y}));
-    assert(WireRouter.pointAt(WireRouter.create(data.components, data.wires).route(2), data.wires[3].branch.fraction).x === 324,
+    assert(WireRouter.pointAt(WireRouter.create(data.components, data.wires).route(2), data.wires[3].branch.fraction).x === 300,
       "超出主線的拖曳不可改變接點");
     app.loadSample();
   });
@@ -355,17 +388,17 @@ document.getElementById("app").addEventListener("load", async event => {
     app.render();
     doc.querySelector('[aria-label="連接 ground1.p"]').click();
     const wire = $("wires").querySelectorAll("g")[2].querySelectorAll(".wire-hit")[1];
-    const point = new app.DOMPoint(300, 240).matrixTransform(wire.getScreenCTM());
+    const point = new app.DOMPoint(276, 204).matrixTransform(wire.getScreenCTM());
     wire.dispatchEvent(new app.MouseEvent("click", {bubbles: true, clientX: point.x, clientY: point.y}));
     const branch = app.eval("model.wires[3]");
     assert(branch && branch.branch.parent === 2, "應建立指向主線的分支");
     const oldJunction = WireRouter.pointAt(branch ? app.eval("model.wires[2].route") : [], branch.branch.fraction);
-    assert(Math.abs(oldJunction.x - 300) < 2 && near(oldJunction.y, 240), "接點應在點擊位置");
+    assert(Math.abs(oldJunction.x - 276) < 2 && near(oldJunction.y, 204), "接點應在點擊位置");
     assert(app.eval("CircuitEngine.generate(model)").includes("connect(ground1.p, capacitor1.n)"), "分支應產生電氣連接");
     const main = $("wires").querySelectorAll("g")[2];
     main.setPointerCapture = () => {};
-    const start = new app.DOMPoint(350, 240).matrixTransform(main.getScreenCTM());
-    const hit = [...main.querySelectorAll(".wire-hit")].find(path => path.getAttribute("d").includes("540 240 L 300 240"));
+    const start = new app.DOMPoint(348, 204).matrixTransform(main.getScreenCTM());
+    const hit = [...main.querySelectorAll(".wire-hit")].find(path => path.getAttribute("d").includes("492 204 L 276 204"));
     hit.dispatchEvent(new app.PointerEvent("pointerdown", {bubbles: true, button: 0, pointerId: 7, clientX: start.x, clientY: start.y}));
     for (const [type, y] of [["pointermove", start.y - 20], ["pointerup", start.y - 20]])
       main.dispatchEvent(new app.PointerEvent(type, {bubbles: true, button: 0, pointerId: 7, clientX: start.x, clientY: y}));
@@ -375,7 +408,7 @@ document.getElementById("app").addEventListener("load", async event => {
     const branchEnd = router.route(3).at(-1);
     assert(router.route(2).every(p => WireRouter.onGrid(p.x) && WireRouter.onGrid(p.y)) &&
       WireRouter.onGrid(junction.x) && WireRouter.onGrid(junction.y), "手動拖曳的主線與接點應對齊格點");
-    assert(near(junction.x, oldJunction.x) && junction.y < 240 && near(branchEnd.x, junction.x) && near(branchEnd.y, junction.y),
+    assert(near(junction.x, oldJunction.x) && junction.y < 204 && near(branchEnd.x, junction.x) && near(branchEnd.y, junction.y),
       `接點及分支應隨主線拖曳 ${JSON.stringify({junction, branchEnd, main: router.route(2)})}`);
     assert(doc.querySelector(".wire-junction"), "拖曳後仍應顯示接點");
     app.loadSample();
@@ -509,9 +542,10 @@ document.getElementById("app").addEventListener("load", async event => {
       "未受阻擋的其他線路不應改變");
     const junction = WireRouter.pointAt(routes[2], data.wires[3].branch.fraction);
     assert(near(junction.x, oldJunction.x) && near(junction.y, oldJunction.y), "接點位置應保持不變");
-    assert(routes[0][0].x === before[0][0].x && routes[0][1].y === before[0][1].y &&
-      routes[1].at(-1).x === before[1].at(-1).x && routes[1].at(-2).y === before[1].at(-2).y,
-      "移動元件兩端以外的線路應維持原有位置");
+    assert(JSON.stringify(routes[0][0]) === JSON.stringify(before[0][0]) &&
+      JSON.stringify(routes[1].at(-1)) === JSON.stringify(before[1].at(-1)) &&
+      routes[0][1].x === before[0][1].x && routes[1].at(-2).x === before[1].at(-2).x,
+      "移動元件時應保留另一端端點與其垂直連線");
     assert(app.eval("CircuitEngine.generate(model)") === beforeCode, "移動不得改變電氣連接");
     app.loadSample();
   });
