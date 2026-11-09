@@ -1019,10 +1019,14 @@ $("fit-view").addEventListener("click", fitView);
 $("optimize-layout").addEventListener("click", () => {
   if (!model.components.length) { notify("請先新增元件再優化布局。"); return; }
   if (model.wires.some(wire => wire.route) &&
-      !confirm("優化布局會重新排列元件並清除手動線路位置，確定繼續？")) return;
+      !confirm("優化布局可能重新排列元件並取代手動線路位置，確定繼續？")) return;
   const layout = CircuitLayout.optimize(model.components, model.wires);
   if (!layout) {
     notify("無法為此模型找到完整的自動線路；原布局及手動線路未變更。", true);
+    return;
+  }
+  if (layout.unchanged) {
+    notify("未找到更整齊且不增加交叉或轉折的布局；原布局保持不變。");
     return;
   }
   const {components, wires} = layout;

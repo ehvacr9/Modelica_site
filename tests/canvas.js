@@ -222,6 +222,82 @@ document.getElementById("app").addEventListener("load", async event => {
     assert(JSON.stringify(result.wires.map(({from,to}) => ({from,to}))) ===
       JSON.stringify(wires), "優化不得改變電氣連線");
   });
+  test("layout preserves an already tidy custom circuit and its saved routes", () => {
+    app.loadSample();
+    const data = app.eval("model"), layout = app.eval("CircuitLayout");
+    data.components = data.components.map(part => ({...part, x: part.x + 120, y: part.y + 120}));
+    for (const wire of data.wires) if (wire.route)
+      wire.route = wire.route.map(point => ({x: point.x + 120, y: point.y + 120}));
+    app.render();
+    const before = JSON.stringify(data), result = layout.optimize(data.components, data.wires);
+    assert(result && result.unchanged, "不應為更短的布局而覆蓋已整齊的手動電路");
+    app.confirm = () => true;
+    $("optimize-layout").click();
+    assert(JSON.stringify(data) === before && $("message").textContent.includes("原布局保持不變"),
+      "沒有較佳方案時應保留元件位置、手動線路與分支");
+    app.loadSample();
+  });
+  test("layout improves a spread-out circuit without adding visual clutter", () => {
+    app.loadSample();
+    const data = app.eval("model"), layout = app.eval("CircuitLayout");
+    data.components.find(part => part.id === "resistor1").x = 720;
+    for (const wire of data.wires) delete wire.route;
+    const router = WireRouter.create(data.components, data.wires);
+    const before = data.wires.map((wire, i) => router.route(i));
+    const bends = routes => routes.reduce((sum, route) => sum + route.length - 2, 0);
+    const crossings = routes => [...WireRouter.crossings(data.wires, routes).bridges.values()]
+      .reduce((sum, values) => sum + values.length, 0);
+    const result = layout.optimize(data.components, data.wires);
+    assert(result && !result.unchanged, "應改善可重新排列的分散電路");
+    const updated = WireRouter.create(result.components, result.wires);
+    const after = result.wires.map((wire, i) => updated.route(i));
+    assert(after.every(Boolean) && bends(after) <= bends(before) && crossings(after) <= crossings(before),
+      "優化不應增加折線或跨線");
+    assert(app.eval("CircuitEngine").generate({...data, components: result.components, wires: result.wires}) ===
+      app.eval("CircuitEngine.generate(model)"), "布局不得改變電氣連線");
+    app.loadSample();
+  });
+  test("layout does not introduce clutter into circuits with meters or separate groups", () => {
+    const layout = app.eval("CircuitLayout");
+    const parts = [
+      {id:"v",type:"voltage",x:0,y:72}, {id:"am",type:"ammeter",x:216,y:0,rotation:270},
+      {id:"r",type:"resistor",x:432,y:0,rotation:270}, {id:"g",type:"ground",x:0,y:264},
+      {id:"vm",type:"voltmeter",x:648,y:72},
+      {id:"r2",type:"resistor",x:0,y:600,rotation:270}, {id:"r3",type:"resistor",x:240,y:600,rotation:270}
+    ];
+    const wire = (a, ap, b, bp) => ({from:{id:a,port:ap},to:{id:b,port:bp}});
+    const wires = [wire("v","p","am","p"), wire("am","n","r","p"), wire("r","n","v","n"),
+      wire("g","p","v","n"), wire("vm","p","r","p"), wire("vm","n","r","n"),
+      wire("r2","n","r3","p")];
+    const result = layout.optimize(parts, wires);
+    assert(result, "量測器及獨立電路應能完成布局");
+    const check = (components, candidate) => {
+      const router = WireRouter.create(components, candidate);
+      const routes = candidate.map((wire, i) => router.route(i));
+      const geometry = WireRouter.crossings(candidate, routes);
+      const segments = routes.flatMap((route, wire) => route.slice(1).map((b, i) => {
+        const a = route[i], horizontal = a.y === b.y, axis = horizontal ? "x" : "y";
+        return {wire, horizontal, line: horizontal ? a.y : a.x,
+          low: Math.min(a[axis], b[axis]), high: Math.max(a[axis], b[axis])};
+      }));
+      let overlap = 0;
+      for (let i = 0; i < segments.length; i++) for (let j = 0; j < i; j++) {
+        const a = segments[i], b = segments[j];
+        if (a.wire !== b.wire && a.horizontal === b.horizontal && a.line === b.line)
+          overlap += Math.max(0, Math.min(a.high, b.high) - Math.max(a.low, b.low));
+      }
+      return {routes, ambiguous: geometry.ambiguous,
+        bridges: [...geometry.bridges.values()].reduce((sum, values) => sum + values.length, 0),
+        bends: routes.reduce((sum, route) => sum + route.length - 2, 0), overlap,
+        short: segments.filter(segment => segment.high - segment.low < 2 * WireRouter.gridSize).length};
+    };
+    const before = check(parts, wires), after = check(result.components, result.wires);
+    assert(after.routes.every(Boolean) && (!after.ambiguous || before.ambiguous) &&
+      after.bridges <= before.bridges && after.bends <= before.bends &&
+      after.overlap <= before.overlap && after.short <= before.short,
+      "優化不應增加線路警告、跨線、重疊、轉折或短碎線");
+    assert(result.components.find(p => p.id === "r2").y >= 0, "獨立電路元件應保留");
+  });
   test("layout failure leaves all model data untouched", () => {
     app.loadSample();
     app.showResults({names: ["time", "capacitor1.v"], columns: [[0, 1], [0, 5]], timeIndex: 0});
